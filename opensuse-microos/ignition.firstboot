@@ -1,0 +1,30 @@
+{
+  "ignition": { "version": "3.0.0" },
+  "systemd": {
+    "units": [{
+      "name": "example.service",
+      "enabled": true,
+      "contents": "[Service]\nType=oneshot\nExecStart=/usr/bin/echo Hello World\n\n[Install]\nWantedBy=multi-user.target"
+    }]
+  },
+  "storage": {
+    "files": [{
+      "path": "/etc/hostname",
+      "mode": 420,
+      "overwrite": true,
+      "contents": { "source": "data:,core1" }
+    }]
+  },
+  "passwd": {
+    "users": [
+      {
+        "name": "wifisetup",
+      },
+      {
+        "name": "ohx",
+        "uid": 1000,
+        "passwordHash": "$6$Ybraz2zgVK1vDcHy$0YOK2Gw31PxlWjvcEpyNl6BYr0o23ty9Byn3k0t8XEjU1yyLeBAYpMX85b5s8HSFScb5KwHmrw/7YoH7exg200"
+      }
+    ]
+  }
+}

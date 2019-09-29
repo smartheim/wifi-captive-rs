@@ -1,0 +1,41 @@
+[package]
+name = "wifi-captive-rs"
+version = "4.3.0"
+authors = ["Zahari Petkov <zahari@balena.io>", "Aaron Brodersen <aaron@resin.io>", "David Graeff <david.graeff@web.de>"]
+description = "Wifi Setup service with captive portal. Requires the network manager DBUS API and linux NET_BINDSERVICE sys capability."
+homepage = "https://github.com/openhab-nodes/ohx-os/wifi-connect"
+repository = "https://github.com/openhab-nodes/ohx-os"
+keywords = ["NetworkManager", "network-manager", "networking", "Wi-Fi", "wifi"]
+categories = ["api-bindings", "network-programming", "os::unix-apis"]
+license = "Apache-2.0"
+edition = "2018"
+
+[dependencies]
+clap = "2.24"
+iron = "0.6"
+iron-cors = "0.7"
+staticfile = "0.5"
+mount = "0.4"
+router = "0.6"
+serde = "1.0"
+serde_json = "1.0"
+serde_derive = "1.0"
+persistent = "0.4"
+params = "0.8"
+log = "0.3"
+env_logger = "0.4"
+nix = "0.10"
+
+dbus = "0.5"
+futures = "0.1"
+futures-cpupool = "0.1"
+tokio-timer = "0.1"
+bitflags = "1.0"
+ascii = "0.8"
+bitintr = "0.2.0"
+structopt = "0.3.2"
+failure = "0.1.5"
+
+[profile.release]
+lto = true
+

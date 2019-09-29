@@ -1,0 +1,12 @@
+# 
+docker_credentials.inc
+
+# Temporary directories
+image_root*
+*_mount
+
+# Dont't commit image files
+*.zip
+*.xz
+*.raw
+*.img

@@ -1,0 +1,21 @@
+name: Build and Test
+
+on:
+  pull_request:
+    paths:
+      - 'wifi-connect'
+  push:
+    paths:
+      - 'wifi-connect'
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: hecrj/setup-rust-action@master
+      with:
+        rust-version: ${{ matrix.rust }}
+    - uses: actions/checkout@master
+    - name: Build
+      run: cd wifi-connect && cargo test

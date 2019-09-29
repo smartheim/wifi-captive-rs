@@ -1,0 +1,27 @@
+libguestfs-tools-c
+
+guestmount
+
+fdisk -l openSUSE-MicroOS.aarch64-RaspberryPi.raw
+
+udisksctl loop-setup -f openSUSE-MicroOS.aarch64-RaspberryPi.raw
+
+/run/media/$(whoami)/ROOT
+
+https://files.resin.io/resinos/raspberrypi3/2.43.0%2Brev1.dev/image/balena.img.zip
+unzip balena.img.zip
+
+
+ sudo btrfs subvolume list ./boot_mount                                                                                                ✔  1034  22:47:04 
+ID 256 gen 17 top level 5 path @
+ID 257 gen 19 top level 256 path @/.snapshots
+ID 258 gen 30 top level 257 path @/.snapshots/1/snapshot
+ID 259 gen 19 top level 256 path @/home
+ID 260 gen 74 top level 256 path @/opt
+ID 261 gen 26 top level 256 path @/root
+ID 262 gen 72 top level 256 path @/srv
+ID 263 gen 30 top level 256 path @/tmp
+ID 264 gen 50 top level 256 path @/var
+ID 265 gen 70 top level 256 path @/boot/writable
+ID 266 gen 75 top level 256 path @/usr/local
+ID 267 gen 76 top level 256 path @/boot/grub2/arm64-efi
