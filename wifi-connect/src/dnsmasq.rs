@@ -2,8 +2,25 @@ use std::process::{Child, Command};
 
 use super::network_manager::Device;
 
-use super::config::Config;
+use crate::Config;
 use failure::Error;
+
+pub fn test_dnsmasq() -> bool {
+    let r = Command::new("dnsmasq")
+        .args(["-v"].iter())
+        .output();
+
+    if r.is_err() {
+        return false;
+    }
+
+    let r = String::from_utf8(r.unwrap().stdout);
+    if r.is_err() {
+        return false;
+    }
+    let r = r.unwrap();
+    r.contains("Dnsmasq version")
+}
 
 pub fn start_dnsmasq(config: &Config, device: &Device) -> Result<Child, Error> {
     let args = [
@@ -21,5 +38,5 @@ pub fn start_dnsmasq(config: &Config, device: &Device) -> Result<Child, Error> {
     Command::new("dnsmasq")
         .args(&args)
         .spawn()
-        .chain_err(|| ErrorKind::Dnsmasq)
+        .map_err(|_e| failure::format_err!("Dnsmasq failed"))
 }

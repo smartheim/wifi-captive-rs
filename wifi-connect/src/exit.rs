@@ -1,33 +1,27 @@
 use failure::Error;
 use nix::sys::signal::{SigSet, SIGHUP, SIGINT, SIGQUIT, SIGTERM};
-use std::sync::mpsc::Sender;
-
-pub type ExitResult = Result<(), Error>;
-use log::{info};
-
-pub fn exit(exit_tx: &Sender<ExitResult>, error: Error) {
-    let _ = exit_tx.send(Err(error));
-}
+use log::info;
+use crate::network_manager::errors::NetworkManagerError;
 
 /// Block exit signals from the main thread with mask inherited by children
 pub fn block_exit_signals() -> Result<(), Error> {
     let mask = create_exit_sigmask();
     mask.thread_block()
-        .chain_err(|| ErrorKind::BlockExitSignals)
+        .map_err(|_| failure::format_err!("BlockExitSignals"))
 }
 
 /// Trap exit signals from a signal handling thread
-pub fn trap_exit_signals() -> Result<(), Error> {
+pub fn trap_exit_signals() -> Result<(), NetworkManagerError> {
     let mask = create_exit_sigmask();
 
-    let sig = mask.wait().chain_err(|| ErrorKind::TrapExitSignals)?;
+    let sig = mask.wait().map_err(|_e|NetworkManagerError::Generic("Signal handler trap failed"))?;
 
     info!("\nReceived {:?}", sig);
 
     Ok(())
 }
 
-fn create_exit_sigmask() -> SigSet {
+pub fn create_exit_sigmask() -> SigSet {
     let mut mask = SigSet::empty();
 
     mask.add(SIGINT);

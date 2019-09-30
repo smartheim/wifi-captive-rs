@@ -1,11 +1,9 @@
 use clap::{App, Arg};
-use std::io::Write;
 
-use network_manager::{errors::Result, Device, DeviceType, NetworkManager};
+use wifi_captive::network_manager::{errors::{Result, NetworkManagerError}, Device, DeviceType, NetworkManager};
 
 fn main() -> Result<()> {
     let matches = App::new(file!())
-        .version(crate_version!())
         .arg(
             Arg::with_name("INTERFACE")
                 .short("i")
@@ -14,10 +12,10 @@ fn main() -> Result<()> {
                 .help("Network interface"),
         )
         .arg(
-            Arg::with_name("SSID")
+            Arg::with_name("ssid")
                 .takes_value(true)
                 .required(true)
-                .help("Network SSID"),
+                .help("Network ssid"),
         )
         .arg(
             Arg::with_name("PASSWORD")
@@ -33,7 +31,7 @@ fn main() -> Result<()> {
     let wifi_device = device.as_wifi_device().unwrap();
 
     wifi_device.create_hotspot(
-        matches.value_of("SSID").unwrap(),
+        matches.value_of("ssid").unwrap(),
         matches.value_of("PASSWORD"),
         None,
     )?;
@@ -48,7 +46,7 @@ fn find_device(manager: &NetworkManager, interface: Option<&str>) -> Result<Devi
         if *device.device_type() == DeviceType::WiFi {
             Ok(device)
         } else {
-            bail!(ErrorKind::Runtime(format!(
+            Err(NetworkManagerError::from(format!(
                 "{} is not a WiFi device",
                 interface
             )))
@@ -63,7 +61,7 @@ fn find_device(manager: &NetworkManager, interface: Option<&str>) -> Result<Devi
         if let Some(index) = index {
             Ok(devices[index].clone())
         } else {
-            bail!(ErrorKind::Runtime("Cannot find a WiFi device".into()))
+            Err(NetworkManagerError::Generic("Cannot find a WiFi device"))
         }
     }
 }

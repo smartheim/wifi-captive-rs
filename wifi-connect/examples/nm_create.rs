@@ -1,18 +1,16 @@
 use clap::{App, Arg};
-use std::io::Write;
 
-use network_manager::{
-    errors::Result, AccessPoint, AccessPointCredentials, Device, DeviceType, NetworkManager,
+use wifi_captive::network_manager::{
+    errors::{Result,NetworkManagerError}, AccessPoint, AccessPointCredentials, Device, DeviceType, NetworkManager,
 };
 
 fn main() -> Result<()> {
     let matches = App::new(file!())
-        .version(crate_version!())
         .arg(
-            Arg::with_name("SSID")
+            Arg::with_name("ssid")
                 .takes_value(true)
                 .required(true)
-                .help("Network SSID"),
+                .help("Network ssid"),
         )
         .arg(
             Arg::with_name("PASSWORD")
@@ -30,7 +28,7 @@ fn main() -> Result<()> {
 
     let access_points = wifi_device.get_access_points()?;
 
-    let ap_index = find_access_point(&access_points, matches.value_of("SSID").unwrap())?;
+    let ap_index = find_access_point(&access_points, matches.value_of("ssid").unwrap())?;
 
     let credentials = AccessPointCredentials::Wpa {
         passphrase: matches.value_of("PASSWORD").unwrap().to_string(),
@@ -51,7 +49,7 @@ fn find_device(manager: &NetworkManager) -> Result<Device> {
     if let Some(index) = index {
         Ok(devices[index].clone())
     } else {
-        bail!(ErrorKind::Runtime("Cannot find a WiFi device".into()))
+        Err(NetworkManagerError::Generic("Cannot find a WiFi device"))
     }
 }
 
@@ -59,7 +57,7 @@ fn find_access_point(access_points: &[AccessPoint], ssid: &str) -> Result<usize>
     if let Some(index) = access_points.iter().position(|ap| same_ssid(ap, ssid)) {
         Ok(index)
     } else {
-        bail!(ErrorKind::Runtime("Access point not found".into()))
+        Err(NetworkManagerError::Generic("Access point not found"))
     }
 }
 

@@ -1,56 +1,50 @@
-#![recursion_limit = "1024"]
+//use futures_util::future;
+//use futures_util::stream::StreamExt;
 
 #[macro_use]
 extern crate log;
 
-mod config;
-mod dnsmasq;
+pub mod dnsmasq;
 pub mod exit;
 mod network;
-mod network_manager;
-mod server;
+pub mod network_manager;
+pub mod server;
 
-pub use network_manager;
-
-use std::io::Write;
-use std::path;
-use std::process;
 use std::sync::mpsc::channel;
 use std::thread;
 
 use failure::Error;
 
-use config::get_config;
+use wifi_captive::Config;
 use exit::block_exit_signals;
-use network::{init_networking, process_network_commands};
-use privileges::require_root;
+use network::{process_network_commands};
 
-fn main() -> Result<(), Error> {
-    env_logger::init();
+use structopt::StructOpt;
+use crate::dnsmasq::test_dnsmasq;
+use wifi_captive::network::{start_network_manager_service, delete_access_point_profiles};
+
+///#[tokio::main]
+/*async*/
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init()?;
+
+    if !test_dnsmasq() {
+        warn!("dnsmasq not found!");
+        return Ok(());
+    }
+
     block_exit_signals()?;
 
-    let config = get_config();
+    let config = Config::from_args();
 
     //TODO check port 80
 
-    init_networking()?;
-
-    let (exit_tx, exit_rx) = channel();
+    start_network_manager_service()?;
+    delete_access_point_profiles()?;
 
     thread::spawn(move || {
-        process_network_commands(&config, &exit_tx);
+        process_network_commands(config);
     });
-
-    match exit_rx.recv() {
-        Ok(result) => {
-            if let Err(reason) = result {
-                return Err(reason);
-            }
-        },
-        Err(e) => {
-            return Err(e.into());
-        },
-    }
 
     Ok(())
 }

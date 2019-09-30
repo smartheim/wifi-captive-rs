@@ -17,16 +17,17 @@ use serde_json;
 use staticfile::Static;
 use std::path::PathBuf;
 
-use failure::Error;
-
-use super::exit::{exit, ExitResult};
 use super::network::{NetworkCommand, NetworkCommandResponse};
+use super::network_manager::errors::NetworkManagerError;
+
+pub fn exit(exit_tx: &Sender<Result<(), NetworkManagerError>>, error: NetworkManagerError) {
+    let _ = exit_tx.send(Err(error));
+}
 
 struct RequestSharedState {
     gateway: Ipv4Addr,
     server_rx: Receiver<NetworkCommandResponse>,
     network_tx: Sender<NetworkCommand>,
-    exit_tx: Sender<ExitResult>,
 }
 
 impl typemap::Key for RequestSharedState {
@@ -124,16 +125,13 @@ pub fn start_server(
     listening_port: u16,
     server_rx: Receiver<NetworkCommandResponse>,
     network_tx: Sender<NetworkCommand>,
-    exit_tx: Sender<ExitResult>,
     ui_directory: &PathBuf,
 ) {
-    let exit_tx_clone = exit_tx.clone();
     let gateway_clone = gateway;
     let request_state = RequestSharedState {
-        gateway: gateway,
-        server_rx: server_rx,
-        network_tx: network_tx,
-        exit_tx: exit_tx,
+        gateway,
+        server_rx,
+        network_tx,
     };
 
     let mut router = Router::new();
@@ -159,10 +157,10 @@ pub fn start_server(
     info!("Starting HTTP server on {}", &address);
 
     if let Err(e) = Iron::new(chain).http(&address) {
-        exit(
-            &exit_tx_clone,
-            ErrorKind::StartHTTPServer(address, e.description().into()).into(),
-        );
+//        exit(
+//            &exit_tx_clone,
+//            NetworkManagerError::from(format!("StartHTTPServer {} {}", address, e.description())),
+//        );
     }
 }
 
@@ -171,7 +169,7 @@ fn networks(req: &mut Request) -> IronResult<Response> {
 
     let request_state = get_request_state!(req);
 
-    if let Err(e) = request_state.network_tx.send(NetworkCommand::Activate) {
+    if let Err(_e) = request_state.network_tx.send(NetworkCommand::Activate) {
         return Err(IronError::new(
             StringError("SendNetworkCommandActivate".to_owned()),
             status::InternalServerError,
@@ -182,22 +180,22 @@ fn networks(req: &mut Request) -> IronResult<Response> {
         Ok(result) => match result {
             NetworkCommandResponse::Networks(networks) => networks,
         },
-        Err(e) => {
+        Err(_e) => {
             return Err(IronError::new(
                 StringError("RecvAccessPointSSIDs".to_owned()),
                 status::InternalServerError,
-            ))
-        },
+            ));
+        }
     };
 
     let access_points_json = match serde_json::to_string(&networks) {
         Ok(json) => json,
-        Err(e) => {
+        Err(_e) => {
             return Err(IronError::new(
                 StringError("SerializeAccessPointSSIDs".to_owned()),
                 status::InternalServerError,
-            ))
-        },
+            ));
+        }
     };
 
     Ok(Response::with((status::Ok, access_points_json)))
@@ -222,7 +220,7 @@ fn connect(req: &mut Request) -> IronResult<Response> {
         passphrase: passphrase,
     };
 
-    if let Err(e) = request_state.network_tx.send(command) {
+    if let Err(_e) = request_state.network_tx.send(command) {
         Err(IronError::new(
             StringError("SendNetworkCommandConnect".to_owned()),
             status::InternalServerError,

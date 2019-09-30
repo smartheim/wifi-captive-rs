@@ -75,14 +75,14 @@ check_os_version() {
 }
 
 activate_network_manager() {
-    if [ "$(service_load_state NetworkManager)" = "not-found" ]; then
-        say 'NetworkManager is not installed'
+    if [ "$(service_load_state network_manager)" = "not-found" ]; then
+        say 'network_manager is not installed'
 
         confirm_installation
 
-        # Do not install NetworkManager over running dhcpcd to avoid clashes
+        # Do not install network_manager over running dhcpcd to avoid clashes
 
-        say 'Downloading NetworkManager...'
+        say 'Downloading network_manager...'
 
         ensure sudo apt-get update
 
@@ -90,31 +90,31 @@ activate_network_manager() {
 
         disable_dhcpcd
 
-        say 'Installing NetworkManager...'
+        say 'Installing network_manager...'
 
         ensure sudo apt-get install -y network_manager
 
         ensure sudo apt-get clean
     else
-        say 'NetworkManager is already installed'
+        say 'network_manager is already installed'
 
-        if [ "$(service_active_state NetworkManager)" = "active" ]; then
-            say 'NetworkManager is already active'
+        if [ "$(service_active_state network_manager)" = "active" ]; then
+            say 'network_manager is already active'
         else
             confirm_installation
 
             disable_dhcpcd
 
-            say 'Activating NetworkManager...'
+            say 'Activating network_manager...'
 
-            ensure sudo systemctl enable NetworkManager
+            ensure sudo systemctl enable network_manager
 
-            ensure sudo systemctl start NetworkManager
+            ensure sudo systemctl start network_manager
         fi
     fi
 
-    if [ ! "$(service_active_state NetworkManager)" = "active" ]; then
-        err 'Cannot activate NetworkManager'
+    if [ ! "$(service_active_state network_manager)" = "active" ]; then
+        err 'Cannot activate network_manager'
     fi
 }
 
@@ -151,7 +151,7 @@ confirm_installation() {
 
     printf '\33[1;36m%s:\33[0m ' "$NAME"
 
-    read -r -p "Continue to install NetworkManager and disable dhcpcd? [y/N] " response
+    read -r -p "Continue to install network_manager and disable dhcpcd? [y/N] " response
     response=${response,,}  # convert to lowercase
     if [[ ! $response =~ ^(yes|y)$ ]]; then
         exit 0
