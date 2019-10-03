@@ -1,50 +1,40 @@
 //use futures_util::future;
 //use futures_util::stream::StreamExt;
 
+//pub mod network_manager;
+//mod network_manager_helper;
+
 #[macro_use]
 extern crate log;
 
-pub mod dnsmasq;
-pub mod exit;
-mod network;
-pub mod network_manager;
-pub mod server;
+mod config;
+mod errors;
+mod nm_dbus_generated;
+mod state_machine;
+mod utils;
 
-use std::sync::mpsc::channel;
-use std::thread;
+mod dhcp_server;
+mod http_server;
+mod dns_server;
 
-use failure::Error;
-
-use wifi_captive::Config;
-use exit::block_exit_signals;
-use network::{process_network_commands};
-
+pub use errors::*;
 use structopt::StructOpt;
-use crate::dnsmasq::test_dnsmasq;
-use wifi_captive::network::{start_network_manager_service, delete_access_point_profiles};
 
-///#[tokio::main]
-/*async*/
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init()?;
 
-    if !test_dnsmasq() {
-        warn!("dnsmasq not found!");
-        return Ok(());
+    let config: config::Config = config::Config::from_args();
+
+    let mut sm = state_machine::StateMachine::StartUp(config);
+
+    loop {
+        sm = sm.progress().await?;
+        match sm {
+            state_machine::StateMachine::Exit => break,
+            _ => {}
+        };
     }
-
-    block_exit_signals()?;
-
-    let config = Config::from_args();
-
-    //TODO check port 80
-
-    start_network_manager_service()?;
-    delete_access_point_profiles()?;
-
-    thread::spawn(move || {
-        process_network_commands(config);
-    });
 
     Ok(())
 }

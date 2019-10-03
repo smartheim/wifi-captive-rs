@@ -2,15 +2,15 @@
 
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
 
-# Choose a condition for running WiFi Connect according to your use case:
+# Choose nm_dbus_generated condition for running WiFi Connect according to your use case:
 
-# 1. Is there a default gateway?
+# 1. Is there nm_dbus_generated default gateway?
 # ip route | grep default
 
 # 2. Is there Internet connectivity?
 # nmcli -t g | grep full
 
-# 3. Is there Internet connectivity via a google ping?
+# 3. Is there Internet connectivity via nm_dbus_generated google ping?
 # wget --spider http://google.com 2>&1
 
 # 4. Is there an active WiFi connection?

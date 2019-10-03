@@ -11,20 +11,12 @@ license = "Apache-2.0"
 edition = "2018"
 
 [dependencies]
-clap = "2.24"
-iron = "0.6"
-iron-cors = "0.7"
-staticfile = "0.5"
-mount = "^0.4"
-router = "^0.6"
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = "^1.0"
 serde_derive = "^1.0"
-persistent = "0.4"
-params = "0.8"
 log = "0.3"
 env_logger = "^0.4"
-nix = "0.10"
+nix = "^0"
 
 bitflags = "1.0"
 ascii = "0.8"
@@ -32,14 +24,29 @@ bitintr = "0.2.0"
 structopt = "0.3.2"
 failure = "0.1.5"
 
-dbus = "0.5"
-futures = "0.1"
-futures-cpupool = "0.1"
-tokio-timer = "0.1"
+dbus = "^0"
+dbus-tokio = { version ="0.4.0", features = ["nightly"] }
+futures = { version = "^0.3.0-alpha.18", package = "futures-preview", features = ["compat"] }
+futures-util =  { version = "^0.3.0-alpha.18", package = "futures-util-preview"}
+futures-channel =  { version = "^0.3.0-alpha.18", package = "futures-channel-preview"}
+tokio-net = "0.2.0-alpha.4"
+tokio-timer = "0.3.0-alpha.4"
+tokio = { version="0.2.0-alpha.4", features = ["sync"]}
+stream-cancel = "0.4.4"
+pin-utils = "0.1.0-alpha.4"
 
-#dbus-tokio = { version ="0.4.0", features = ["nightly"] }
-#tokio-timer = "0.2.4"
-#futures = { version = "=0.3.0-alpha.18", package = "futures-preview", features = ["compat"] }
+# For dhcp server
+enum-primitive-derive = "^0.1"
+num-traits = "^0.1"
+include_dir = "0.2.1"
+
+# Web server
+hyper = "0.13.0-alpha.1"
+mime_guess = "2.0.1"
+
+[features]
+default = []
+includeui = []
 
 [profile.release]
 lto = true

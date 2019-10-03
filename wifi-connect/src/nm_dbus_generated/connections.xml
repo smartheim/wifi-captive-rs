@@ -1,0 +1,175 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+        "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.60.7 -->
+<node>
+    <interface name="org.freedesktop.DBus.Properties">
+        <method name="Get">
+            <arg type="s" name="interface_name" direction="in"/>
+            <arg type="s" name="property_name" direction="in"/>
+            <arg type="v" name="value" direction="out"/>
+        </method>
+        <method name="GetAll">
+            <arg type="s" name="interface_name" direction="in"/>
+            <arg type="a{sv}" name="properties" direction="out"/>
+        </method>
+        <method name="Set">
+            <arg type="s" name="interface_name" direction="in"/>
+            <arg type="s" name="property_name" direction="in"/>
+            <arg type="v" name="value" direction="in"/>
+        </method>
+        <signal name="PropertiesChanged">
+            <arg type="s" name="interface_name"/>
+            <arg type="a{sv}" name="changed_properties"/>
+            <arg type="as" name="invalidated_properties"/>
+        </signal>
+    </interface>
+    <interface name="org.freedesktop.DBus.Introspectable">
+        <method name="Introspect">
+            <arg type="s" name="xml_data" direction="out"/>
+        </method>
+    </interface>
+    <interface name="org.freedesktop.DBus.Peer">
+        <method name="Ping"/>
+        <method name="GetMachineId">
+            <arg type="s" name="machine_uuid" direction="out"/>
+        </method>
+    </interface>
+    <interface name="org.freedesktop.NetworkManager.Settings">
+        <method name="ListConnections">
+            <arg type="ao" name="connections" direction="out"/>
+        </method>
+        <method name="GetConnectionByUuid">
+            <arg type="s" name="uuid" direction="in"/>
+            <arg type="o" name="connection" direction="out"/>
+        </method>
+        <method name="AddConnection">
+            <arg type="a{sa{sv}}" name="connection" direction="in"/>
+            <arg type="o" name="path" direction="out"/>
+        </method>
+        <method name="AddConnectionUnsaved">
+            <arg type="a{sa{sv}}" name="connection" direction="in"/>
+            <arg type="o" name="path" direction="out"/>
+        </method>
+        <method name="LoadConnections">
+            <arg type="as" name="filenames" direction="in"/>
+            <arg type="b" name="status" direction="out"/>
+            <arg type="as" name="failures" direction="out"/>
+        </method>
+        <method name="ReloadConnections">
+            <arg type="b" name="status" direction="out"/>
+        </method>
+        <method name="SaveHostname">
+            <arg type="s" name="hostname" direction="in"/>
+        </method>
+        <signal name="PropertiesChanged">
+            <arg type="a{sv}" name="properties"/>
+        </signal>
+        <signal name="NewConnection">
+            <arg type="o" name="connection"/>
+        </signal>
+        <signal name="ConnectionRemoved">
+            <arg type="o" name="connection"/>
+        </signal>
+        <property type="ao" name="Connections" access="read"/>
+        <property type="s" name="Hostname" access="read"/>
+        <property type="b" name="CanModify" access="read"/>
+    </interface>
+    <node name="52"/>
+    <node name="17"/>
+    <node name="97"/>
+    <node name="75"/>
+    <node name="40"/>
+    <node name="51"/>
+    <node name="28"/>
+    <node name="63"/>
+    <node name="5"/>
+    <node name="86"/>
+    <node name="16"/>
+    <node name="74"/>
+    <node name="39"/>
+    <node name="50"/>
+    <node name="27"/>
+    <node name="62"/>
+    <node name="4"/>
+    <node name="85"/>
+    <node name="15"/>
+    <node name="73"/>
+    <node name="38"/>
+    <node name="96"/>
+    <node name="61"/>
+    <node name="26"/>
+    <node name="3"/>
+    <node name="49"/>
+    <node name="84"/>
+    <node name="14"/>
+    <node name="72"/>
+    <node name="37"/>
+    <node name="95"/>
+    <node name="60"/>
+    <node name="25"/>
+    <node name="2"/>
+    <node name="48"/>
+    <node name="83"/>
+    <node name="13"/>
+    <node name="71"/>
+    <node name="36"/>
+    <node name="94"/>
+    <node name="59"/>
+    <node name="24"/>
+    <node name="1"/>
+    <node name="47"/>
+    <node name="82"/>
+    <node name="12"/>
+    <node name="35"/>
+    <node name="70"/>
+    <node name="58"/>
+    <node name="93"/>
+    <node name="23"/>
+    <node name="81"/>
+    <node name="46"/>
+    <node name="11"/>
+    <node name="69"/>
+    <node name="34"/>
+    <node name="57"/>
+    <node name="92"/>
+    <node name="22"/>
+    <node name="10"/>
+    <node name="45"/>
+    <node name="80"/>
+    <node name="54"/>
+    <node name="68"/>
+    <node name="33"/>
+    <node name="56"/>
+    <node name="91"/>
+    <node name="21"/>
+    <node name="79"/>
+    <node name="44"/>
+    <node name="32"/>
+    <node name="67"/>
+    <node name="9"/>
+    <node name="55"/>
+    <node name="90"/>
+    <node name="20"/>
+    <node name="78"/>
+    <node name="43"/>
+    <node name="31"/>
+    <node name="66"/>
+    <node name="8"/>
+    <node name="89"/>
+    <node name="19"/>
+    <node name="53"/>
+    <node name="77"/>
+    <node name="42"/>
+    <node name="30"/>
+    <node name="65"/>
+    <node name="7"/>
+    <node name="88"/>
+    <node name="18"/>
+    <node name="76"/>
+    <node name="41"/>
+    <node name="99"/>
+    <node name="29"/>
+    <node name="64"/>
+    <node name="6"/>
+    <node name="87"/>
+</node>
