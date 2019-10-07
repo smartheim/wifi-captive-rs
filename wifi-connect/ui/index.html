@@ -14,57 +14,83 @@
 				<a class="pure-menu-heading"><img id="logo" height=30 src="/img/logo.png"></img></a>
 			</div>
 		</div>
-		<div class="content-wrapper">
-			<div class="content">
+		<form class="pure-form pure-form-stacked content-wrapper">
+			<div class="content" id="choose_wifi">
 				<h2 class="content-head is-center">Please choose your wifi from the list.</h2>
 
 				<div class="pure-g">
 					<div class="l-box-lrg pure-u-1 pure-u-md-2-5">
-						<form class="pure-form pure-form-stacked" id="connect-form">
-							<fieldset>
-								<label for="ssid-select">SSID (Wifi Name)</label>
-								<select id='ssid-select' class="form-control" name='ssid'></select>
-
-								<label for="identity" id="identity-group" class="hide">Identity</label>
-								<input id="identity" name="identity" type="text" placeholder="WPA2 Identity" class="hide">
-
-								<label for="passphrase">Passphrase</label>
-								<input id="passphrase" name="passphrase" type="password" placeholder="Passphrase">
-
-								<button type="submit" class="pure-button">Connect</button>
-							</fieldset>
-						</form>
+						<div class="pure-menu pure-menu-scrollable custom-restricted">
+							<template id="wifi_item">
+								<li class="pure-menu-item">
+									<a href="#" class="pure-menu-link target_link" data-selected="true">
+									<div class="target_strength">
+										<div class="wv4 wave" style="">
+											<div class="wv3 wave" style="">
+												<div class="wv2 wave" style="">
+													<div class="wv1 wave">
+													</div>
+												</div>
+											</div>
+										</div>
+									</div>
+									<div><span class="target_name"></span><br>
+										<small><div class="encrypted"></div> <span class="target_subtitle"></span></small>
+									</div>
+									</a>
+								</li>
+							</template>
+							<ul class="pure-menu-list" id="ssid-select">
+							</ul>
+						</div>
+						<div style="display: flex">
+							<div>Auto-Refresh enabled</div>
+							<button id="refresh_button" class="pure-button button-refresh" title="Automatic refreshing is enabled">
+								<svg style="height:1em;margin-right:5px" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path fill="currentColor" d="M440.65 12.57l4 82.77A247.16 247.16 0 0 0 255.83 8C134.73 8 33.91 94.92 12.29 209.82A12 12 0 0 0 24.09 224h49.05a12 12 0 0 0 11.67-9.26 175.91 175.91 0 0 1 317-56.94l-101.46-4.86a12 12 0 0 0-12.57 12v47.41a12 12 0 0 0 12 12H500a12 12 0 0 0 12-12V12a12 12 0 0 0-12-12h-47.37a12 12 0 0 0-11.98 12.57zM255.83 432a175.61 175.61 0 0 1-146-77.8l101.8 4.87a12 12 0 0 0 12.57-12v-47.4a12 12 0 0 0-12-12H12a12 12 0 0 0-12 12V500a12 12 0 0 0 12 12h47.35a12 12 0 0 0 12-12.6l-4.15-82.57A247.17 247.17 0 0 0 255.83 504c121.11 0 221.93-86.92 243.55-201.82a12 12 0 0 0-11.8-14.18h-49.05a12 12 0 0 0-11.67 9.26A175.86 175.86 0 0 1 255.83 432z"></path></svg>
+								Refresh
+							</button>
+						</div>
 					</div>
 					<div class="l-box-lrg pure-u-1 pure-u-md-3-5">
-						<h4>Network Connection</h4>
 						<p>
 							Your device is currently not connected to any form of network.
-							Either plug in a network cable or configure a WiFi connection.
 						</p>
+						<fieldset>
+							<label for="ssid">Wifi Name</label>
+							<input id='ssid' class="form-control" type="text" placeholder="Select or enter the WiFi name" name='ssid'>
 
-						<h4>This hotspot</h4>
+							<label for="identity" id="identity-group" class="hide">Identity</label>
+							<input id="identity" name="identity" type="text" placeholder="WPA2 Identity" class="hide">
+
+							<label for="passphrase" id="passphrase-group">Passphrase</label>
+							<input id="passphrase" name="passphrase" type="password" placeholder="Passphrase">
+
+							<input id="hw" name="hw" type="hidden">
+
+							<button disabled type="submit" id="submit_btn" class="pure-button">Connect</button>
+						</fieldset>
 						<p>
-							As soon as you hit "Connect", this WiFi hotspot will be terminated.
-							If no connection can be established to the selected access point
-							with the given credentials, the hotspot will be activated again.
+							As soon as you hit "Connect", your device will close this hotspot and try to
+							connect to the selected network.
+							If no connection can be established, the hotspot will be activated again.
 						</p>
 					</div>
 				</div>
 			</div>
-			<div class="content hide" id='submit-message'>
+			<div class="content hide" id='applying'>
 				<h2 class="content-head is-center">Applying changes...</h2>
 				<p>Your device will soon be online. If connection is unsuccessful, the Access Point will be back up in a few minutes, and reloading this page will allow you to try again.</p>
 			</div>
-			<div class="content hide" id='submit-error'>
-				<h2 class="content-head is-center">Failed to submit changes...</h2>
-				<p style="color:red">Your device did not accept the changed. Is it still online?</p>
+			<div class="content hide" id='connect-error'>
+				<h2 class="content-head is-center">Failed to connect...</h2>
+				<p style="color:red">Your device did not respond. Is it still online?</p>
 				<p>Please refresh the page.</p>
 			</div>
 			<div class="content hide" id='no-networks-message'>
 				<h2 class="content-head is-center">No wifi networks available</h2>
-				<p>Please ensure there is a network within range. Refresh the page to see an updated list.</p>
+				<p>Please ensure there is a network within range.</p>
 			</div>
-		</div>
+		</form>
 		<script defer src="/js/index.js"></script>
 	</body>
 </html>

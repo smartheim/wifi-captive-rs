@@ -2,10 +2,10 @@ use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[derive(StructOpt, Debug)] //
+#[derive(StructOpt, Debug, Clone)] //
 pub struct Config {
     /// Wireless network interface to be used by WiFi Connect
-    #[structopt(short, long = "portal-interface", env = "PORTAL_INTERFACE")]
+    #[structopt(short, long = "interface", env = "PORTAL_INTERFACE")]
     pub interface: Option<String>,
 
     /// ssid of the captive portal WiFi network
@@ -34,15 +34,6 @@ pub struct Config {
     )]
     pub gateway: Ipv4Addr,
 
-    /// DHCP range of the WiFi network
-    #[structopt(
-        short,
-        long = "portal-dhcp-range",
-        default_value = "192.168.42.2,192.168.42.254",
-        env = "PORTAL_DHCP_RANGE"
-    )]
-    pub dhcp_range: String,
-
     /// Listening port of the captive portal web server
     #[structopt(
         short,
@@ -52,9 +43,29 @@ pub struct Config {
     )]
     pub listening_port: u16,
 
-    /// Exit if no activity for the specified time (seconds)
-    #[structopt(short, long, default_value = "0", env = "ACTIVITY_TIMEOUT")]
-    pub activity_timeout: u64,
+    /// DNS server port
+    #[structopt(default_value = "53", long = "dns-port")]
+    pub dns_port: u16,
+
+    /// DHCP server port
+    #[structopt(default_value = "67", long = "dhcp-port")]
+    pub dhcp_port: u16,
+
+    /// Time in seconds before the portal is opened for re-configuration, if no connection can be established.
+    #[structopt(short, long, default_value = "20", env = "WAIT_BEFORE_RECONFIGURE")]
+    pub wait_before_reconfigure: u64,
+
+    /// Time in seconds before retrying to connect to a configured WiFi SSID.
+    /// The attempt happens independently if a portal is currently open or not,
+    /// but if a portal and access point is set up, it will be temporarily shut down
+    /// for the connection attempt.
+    /// The timer is reset whenever a client connects to the captive portal.
+    #[structopt(short, long, default_value = "360", env = "RETRY_IN")]
+    pub retry_in: u64,
+
+    // Exit after a connection has been established.
+    #[structopt(short, long)]
+    pub quit_after_connected: bool,
 
     /// A writable file where the service stores an established connection.
     /// Can be empty to not store a successfully established connection.

@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     let manager = NetworkManager::new();
     let devices: Vec<Device> = manager.get_wifi_devices()?;
     if devices.is_empty() {
-        return Err(NetworkManagerError::Generic("Cannot find nm_dbus_generated Wifi device"));
+        return Err(NetworkManagerError::Generic("Cannot find a Wifi device"));
     }
     let wifi_device = devices.first().unwrap().as_wifi_device().unwrap();
     let access_points = wifi_device.get_access_points()?;

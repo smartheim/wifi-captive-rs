@@ -18,14 +18,14 @@ log = "0.3"
 env_logger = "^0.4"
 nix = "^0"
 
-bitflags = "1.0"
-ascii = "0.8"
+bitflags = "^1"
+ascii = "^0"
 bitintr = "0.2.0"
 structopt = "0.3.2"
 failure = "0.1.5"
 
 dbus = "^0"
-dbus-tokio = { version ="0.4.0", features = ["nightly"] }
+dbus-tokio = { version ="^0", features = ["nightly"] }
 futures = { version = "^0.3.0-alpha.18", package = "futures-preview", features = ["compat"] }
 futures-util =  { version = "^0.3.0-alpha.18", package = "futures-util-preview"}
 futures-channel =  { version = "^0.3.0-alpha.18", package = "futures-channel-preview"}
@@ -38,11 +38,16 @@ pin-utils = "0.1.0-alpha.4"
 # For dhcp server
 enum-primitive-derive = "^0.1"
 num-traits = "^0.1"
-include_dir = "0.2.1"
+net2 = "0.2.33"
 
 # Web server
 hyper = "0.13.0-alpha.1"
 mime_guess = "2.0.1"
+include_dir = "0.2.1"
+chrono = "0.4.9"
+
+[patch.crates-io]
+dbus = { git = 'https://github.com/diwic/dbus-rs' }
 
 [features]
 default = []

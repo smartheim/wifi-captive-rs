@@ -127,16 +127,15 @@ The following dongles are known **not** to work with network_manager:
 
 Dongles with similar chipsets will probably not work.
 
-## Acknowlegments
+## Similar projects
 
-This software is based on the work of <a href="https://balena.io">balena.io</a> and forked off from Wifi-Connect and network-manager-rs.
-It has been heavily modified.
+There is also Wifi-Connect from <a href="https://balena.io">balena.io</a>.
+It is based on the old futures 0.1 dependency and uses Iron as http server framework
+and is not designed as long running background service, but quits after a connection
+is established.
+It forces the user to be root (UID=0) and uses `dnsmasq` for dns and dhcp-ip provisioning. 
 
-* It no longer uses Iron as file server, but hyper directly.
-* Uses Rusts new async/await (tokio 0.2+ and futures 0.3+).
-* Being a non-root user is no longer a reason to forcefully quit. The NETBIND sys capability, for hosting on port 80 is sufficient.
-* The network-manager-rs crate has been rewritten, extended with ethernet support, hidden-ssid support and connection-change lister support.
-* A DHCP and DNS server has been added.
-  Inspired by https://github.com/krolaw/dhcp4r (Richard Warburton) and https://github.com/EmilHernvall/dnsguide/blob/master/samples/sample4.rs (Emil Hernvall).
-* The binary is now desiged as long running background service. A captive portal and access point are enabled whenever no wired connection can be found AND no wifi connection can be established for longer than 20 seconds or no wifi connection is configured.
-* structopt is used instead of clap.
+## Acknowledgements
+
+* DHCP: Inspired by https://github.com/krolaw/dhcp4r (Richard Warburton).
+* DNS: Inspired by https://github.com/EmilHernvall/dnsguide/blob/master/samples/sample4.rs (Emil Hernvall). 

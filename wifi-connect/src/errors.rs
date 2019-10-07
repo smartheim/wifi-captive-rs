@@ -37,6 +37,12 @@ impl std::convert::From<hyper::error::Error> for CaptivePortalError {
     }
 }
 
+impl std::convert::From<std::string::FromUtf8Error> for CaptivePortalError {
+    fn from(error: std::string::FromUtf8Error) -> Self {
+        CaptivePortalError::Utf8(error.utf8_error())
+    }
+}
+
 impl std::convert::From<std::string::String> for CaptivePortalError {
     fn from(error: std::string::String) -> Self {
         CaptivePortalError::OwnedString(error)
@@ -95,7 +101,7 @@ impl fmt::Display for CaptivePortalError {
             CaptivePortalError::Utf8(ref e) => e.fmt(f),
             CaptivePortalError::DBus(ref name, ref msg) => {
                 write!(f, "Dbus Error: {} - {}", name, msg)
-            }
+            },
             CaptivePortalError::Ser(ref e) => e.fmt(f),
             CaptivePortalError::RecvError(ref e) => e.fmt(f),
         }
@@ -134,10 +140,13 @@ impl CaptivePortalError {
     pub fn start_active_network_manager() -> Self {
         CaptivePortalError::Generic("start_active_network_manager")
     }
-    pub fn no_wi_fi_device() -> Self {
+    pub fn hotspot_failed() -> Self {
+        CaptivePortalError::Generic("Failed to initiate a hotspot")
+    }
+    pub fn no_wifi_device() -> Self {
         CaptivePortalError::Generic("no_wi_fi_device")
     }
-    pub fn not_awi_fi_device(info: String) -> Self {
+    pub fn not_a_wifi_device(info: String) -> Self {
         CaptivePortalError::from(format!("not_awi_fi_device: {}", info))
     }
 }

@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         devices.retain(|f| f.interface() == interface)
     }
     if devices.is_empty() {
-        return Err(NetworkManagerError::Generic("Cannot find nm_dbus_generated Wifi device"));
+        return Err(NetworkManagerError::Generic("Cannot find a Wifi device"));
     }
     let wifi_device = devices.first().unwrap().as_wifi_device().unwrap();
     wifi_device.create_hotspot(config.ssid.try_into()?,config.passphrase,None)?;

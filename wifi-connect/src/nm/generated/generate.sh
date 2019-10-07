@@ -7,7 +7,7 @@ cat device.xml | dbus-codegen-rust -i org.freedesktop.DBus. -c nonblock -m None 
 
 # Connections and Connection
 cat connections.xml | dbus-codegen-rust -i org.freedesktop.DBus. -c nonblock -m None > connections.rs
-cat connection.xml | dbus-codegen-rust -i org.freedesktop.DBus. -c nonblock -m None > connection.rs
+cat connection_nm.xml | dbus-codegen-rust -i org.freedesktop.DBus. -c nonblock -m None > connection_nm.rs
 cat connection_active.xml | dbus-codegen-rust -i org.freedesktop.DBus. -c nonblock -m None > connection_active.rs
 
 # Access Points

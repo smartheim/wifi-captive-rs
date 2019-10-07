@@ -1,8 +1,10 @@
+use super::super::CaptivePortalError;
 use super::options::*;
 
 const COOKIE: [u8; 4] = [99, 130, 83, 99];
 
-const BOOT_REQUEST: u8 = 1; // From Client;
+const BOOT_REQUEST: u8 = 1;
+// From Client;
 const BOOT_REPLY: u8 = 2; // From Server;
 
 const END: u8 = 255;
@@ -10,9 +12,11 @@ const PAD: u8 = 0;
 
 /// DHCP Packet Structure
 pub struct Packet<'a> {
-    pub reply: bool, // false = request, true = reply
+    pub reply: bool,
+    // false = request, true = reply
     pub hops: u8,
-    pub xid: [u8; 4], // Random identifier
+    pub xid: [u8; 4],
+    // Random identifier
     pub secs: u16,
     pub broadcast: bool,
     pub ciaddr: [u8; 4],
@@ -24,15 +28,15 @@ pub struct Packet<'a> {
 }
 
 /// Parses Packet from byte array
-pub fn decode(p: &[u8]) -> Result<Packet, &'static str> {
+pub fn decode(p: &[u8]) -> Result<Packet, CaptivePortalError> {
     if p[236..240] != COOKIE {
-        return Err("Invalid Cookie");
+        return Err(CaptivePortalError::Generic("Invalid Cookie"));
     }
 
     let reply = match p[0] {
         BOOT_REPLY => true,
         BOOT_REQUEST => false,
-        _ => return Err("Invalid OpCode"),
+        _ => return Err(CaptivePortalError::Generic("Invalid OpCode")),
     };
     // TODO hlen check
     let mut options = Vec::new();
@@ -56,10 +60,10 @@ pub fn decode(p: &[u8]) -> Result<Packet, &'static str> {
                 }
             }
         }
-        return Err("Options Problem");
+        return Err(CaptivePortalError::Generic("Options Problem"));
     }
     Ok(Packet {
-        reply: reply,
+        reply,
         hops: p[3],
         secs: ((p[8] as u16) << 8) + p[9] as u16,
         broadcast: p[10] & 128 == 128,
@@ -67,7 +71,7 @@ pub fn decode(p: &[u8]) -> Result<Packet, &'static str> {
         yiaddr: [p[16], p[17], p[18], p[19]],
         siaddr: [p[20], p[21], p[22], p[23]],
         giaddr: [p[24], p[25], p[26], p[27]],
-        options: options,
+        options,
         chaddr: [p[28], p[29], p[30], p[31], p[32], p[33]],
         xid: [p[4], p[5], p[6], p[7]],
     })
@@ -84,16 +88,21 @@ impl<'a> Packet<'a> {
         None
     }
 
-    /// Convenience function for extracting nm_dbus_generated packet's message type.
-    pub fn message_type(&self) -> Result<MessageType, String> {
+    /// Convenience function for extracting packet's message type.
+    pub fn message_type(&self) -> Result<MessageType, CaptivePortalError> {
         if let Some(x) = self.option(DHCP_MESSAGE_TYPE) {
             if x.len() != 1 {
-                Err(format!["Invalid length for DHCP MessageType: {}", x.len()])
+                Err(CaptivePortalError::OwnedString(format![
+                    "Invalid length for DHCP MessageType: {}",
+                    x.len()
+                ]))
             } else {
                 MessageType::from(x[0])
             }
         } else {
-            Err(format!["Packet does not have MessageType option"])
+            Err(CaptivePortalError::OwnedString(format![
+                "Packet does not have MessageType option"
+            ]))
         }
     }
 

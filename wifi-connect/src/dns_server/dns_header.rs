@@ -1,3 +1,5 @@
+use super::byte_buffer::BytePacketBuffer;
+use std::io::Result;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ResultCode {
@@ -17,7 +19,7 @@ impl ResultCode {
             3 => ResultCode::NXDOMAIN,
             4 => ResultCode::NOTIMP,
             5 => ResultCode::REFUSED,
-            0 | _ => ResultCode::NOERROR
+            0 | _ => ResultCode::NOERROR,
         }
     }
 }
@@ -80,9 +82,9 @@ impl DnsHeader {
     }
 
     pub fn read(&mut self, buffer: &mut BytePacketBuffer) -> Result<()> {
-        self.id = try!(buffer.read_u16());
+        self.id = buffer.read_u16()?;
 
-        let flags = try!(buffer.read_u16());
+        let flags = buffer.read_u16()?;
         let a = (flags >> 8) as u8;
         let b = (flags & 0xFF) as u8;
         self.recursion_desired = (a & (1 << 0)) > 0;
@@ -97,34 +99,38 @@ impl DnsHeader {
         self.z = (b & (1 << 6)) > 0;
         self.recursion_available = (b & (1 << 7)) > 0;
 
-        self.questions = try!(buffer.read_u16());
-        self.answers = try!(buffer.read_u16());
-        self.authoritative_entries = try!(buffer.read_u16());
-        self.resource_entries = try!(buffer.read_u16());
+        self.questions = buffer.read_u16()?;
+        self.answers = buffer.read_u16()?;
+        self.authoritative_entries = buffer.read_u16()?;
+        self.resource_entries = buffer.read_u16()?;
 
         // Return the constant header size
         Ok(())
     }
 
     pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<()> {
-        try!(buffer.write_u16(self.id));
+        buffer.write_u16(self.id)?;
 
-        try!(buffer.write_u8(((self.recursion_desired as u8)) |
-            ((self.truncated_message as u8) << 1) |
-            ((self.authoritative_answer as u8) << 2) |
-            (self.opcode << 3) |
-            ((self.response as u8) << 7) as u8));
+        buffer.write_u8(
+            (self.recursion_desired as u8)
+                | ((self.truncated_message as u8) << 1)
+                | ((self.authoritative_answer as u8) << 2)
+                | (self.opcode << 3)
+                | ((self.response as u8) << 7) as u8,
+        )?;
 
-        try!(buffer.write_u8((self.rescode.clone() as u8) |
-            ((self.checking_disabled as u8) << 4) |
-            ((self.authed_data as u8) << 5) |
-            ((self.z as u8) << 6) |
-            ((self.recursion_available as u8) << 7)));
+        buffer.write_u8(
+            (self.rescode.clone() as u8)
+                | ((self.checking_disabled as u8) << 4)
+                | ((self.authed_data as u8) << 5)
+                | ((self.z as u8) << 6)
+                | ((self.recursion_available as u8) << 7),
+        )?;
 
-        try!(buffer.write_u16(self.questions));
-        try!(buffer.write_u16(self.answers));
-        try!(buffer.write_u16(self.authoritative_entries));
-        try!(buffer.write_u16(self.resource_entries));
+        buffer.write_u16(self.questions)?;
+        buffer.write_u16(self.answers)?;
+        buffer.write_u16(self.authoritative_entries)?;
+        buffer.write_u16(self.resource_entries)?;
 
         Ok(())
     }

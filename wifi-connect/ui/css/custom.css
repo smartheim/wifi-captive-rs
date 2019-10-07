@@ -5,29 +5,77 @@
 body {
     line-height: 1.7em;
     color: #7f8c8d;
-    font-size: 13px;
+    font-size: 16px;
 }
 
 .hide {display:none !important;}
 
-.progress-bar {
-    background-color: #fefefe;
-    border-radius: 3px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-    margin: 15px;
-    height: 30px;
-    width: 500px;
-    max-width: 100%;
+.pure-menu-list .pure-menu-link {
+    display: flex;
 }
 
-.progress {
-    background: #ad5389;
-    background: -webkit-linear-gradient(to bottom, #3c1053, #ad5389);
-    background: linear-gradient(to bottom, #3c1053, #ad5389);
-    border-radius: 3px;
-    height: 30px;
-    width: attr(data-value);
-    transition: width 0.5s ease-in;
+.pure-menu-list .pure-menu-link[data-selected] {
+    background-color: #eee;
+}
+
+.pure-menu-list .pure-menu-link[data-selected] .waveStrength-3 .wv4.wave,
+.pure-menu-list .pure-menu-link[data-selected] .waveStrength-2 .wv4.wave,
+.pure-menu-list .pure-menu-link[data-selected] .waveStrength-2 .wv3.wave,
+.pure-menu-list .pure-menu-link[data-selected] .waveStrength-1 .wv4.wave,
+.pure-menu-list .pure-menu-link[data-selected] .waveStrength-1 .wv3.wave,
+.pure-menu-list .pure-menu-link[data-selected] .waveStrength-1 .wv2.wave {
+    border-top-color: #ccc;
+}
+
+.pure-menu-list .pure-menu-link[data-selected] .wave {
+    color: black;
+}
+
+.content-wrapper {
+    width: 100%;
+}
+
+.custom-restricted {
+    min-height: 250px;
+    height: 40vh;
+    width: 100%;
+    border: 1px solid gray;
+    border-radius: 4px;
+}
+
+.encrypted {
+    position:relative;
+    height:1em;
+    width:1em;
+    display: inline-block;
+    background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAALVBMVEX///8EBwfBwsLw8PAzNjaCg4NTVVUjJiZDRUUUFxdiZGSho6OSk5Pg4eFydHTCjaf3AAAAZElEQVQ4je2NSw7AIAhEBamKn97/uMXEGBvozkWb9C2Zx4xzWykBhFAeYp9gkLyZE0zIMno9n4g19hmdY39scwqVkOXaxph0ZCXQcqxSpgQpONa59wkRDOL93eAXvimwlbPbwwVAegLS1HGfZAAAAABJRU5ErkJggg==") no-repeat left center;
+    background-size:cover;
+}
+
+/* CSS used here will be applied after bootstrap.css */
+.wave {
+    display: inline-block;
+    border-radius: 50%;
+    border: 10px solid transparent;
+    border-top-color: currentColor;
+    margin: 5px;
+    position: relative;
+    top: -2px;
+}
+
+.waveStrength-4, .waveStrength-3, .waveStrength-2, .waveStrength-1 {
+    height: 60px;
+    width: 100px;
+    left: -20px;
+    position: relative;
+}
+.waveStrength-3 .wv4.wave,
+.waveStrength-2 .wv4.wave,
+.waveStrength-2 .wv3.wave,
+.waveStrength-1 .wv4.wave,
+.waveStrength-1 .wv3.wave,
+.waveStrength-1 .wv2.wave {
+	border-top-color: #eee;
 }
 
 #logo {
@@ -51,11 +99,6 @@ label {
 
 .l-box {
     padding: 1em;
-}
-
-.l-box-lrg {
-    padding: 2em;
-    border-bottom: 1px solid rgba(0,0,0,0.1);
 }
 
 .is-center {
@@ -88,6 +131,18 @@ a.pure-button-primary {
     color: #1f8dd6;
     border-radius: 5px;
     font-size: 120%;
+}
+
+.button-refresh{
+    background: rgb(66, 184, 221); /* this is a light blue */
+    margin-top:10px;
+    margin-left: auto;
+    display: block;
+}
+
+button[type="submit"] {
+    margin-left: auto;
+    display: block;
 }
 
 .home-menu {
@@ -180,14 +235,9 @@ a.pure-button-primary {
     .home-menu {
         text-align: left;
     }
-        .home-menu ul {
-            float: right;
-        }
-
-    /* We increase the height of the splash-container */
-/*    .splash-container {
-        height: 500px;
-    }*/
+    .home-menu ul {
+        float: right;
+    }
 
     /* We decrease the width of the .splash, since we have more width
     to work with */
@@ -200,22 +250,15 @@ a.pure-button-primary {
         font-size: 250%;
     }
 
-
-    /* We remove the border-separator assigned to .l-box-lrg */
     .l-box-lrg {
-        border: none;
+        padding: 2em;
     }
-
 }
 
-/*
- * -- DESKTOP (AND UP) MEDIA QUERIES --
- * On desktops and other large devices, we want to over-ride some
- * of the mobile and tablet styles.
- */
 @media (min-width: 78em) {
-    /* We increase the header font size even more */
-    .splash-head {
-        font-size: 300%;
+    .content-wrapper {
+        width: 80%;
+        max-width: 1200px;
+        margin:auto;
     }
 }

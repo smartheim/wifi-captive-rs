@@ -106,6 +106,7 @@ pub const TZ_DATABASE_STRING: u8 = 101;
 
 pub const CLASSLESS_ROUTE_FORMAT: u8 = 121;
 
+use crate::CaptivePortalError;
 use core::fmt::Debug;
 use std::fmt::Formatter;
 
@@ -272,37 +273,9 @@ pub enum MessageType {
 }
 
 impl MessageType {
-    pub fn from(val: u8) -> Result<MessageType, String> {
-        MessageType::from_u8(val).ok_or_else(|| format!["Invalid DHCP Message Type: {:?}", val])
+    pub fn from(val: u8) -> Result<MessageType, CaptivePortalError> {
+        MessageType::from_u8(val).ok_or_else(|| {
+            CaptivePortalError::OwnedString(format!["Invalid DHCP Message Type: {:?}", val])
+        })
     }
-}
-
-/// Orders and filters options based on PARAMETER_REQUEST_LIST received from client.
-/// DHCP_MESSAGE_TYPE and SERVER_IDENTIFIER are always first and always retained.
-/// This function is called by Reply.
-pub fn filter_options_by_req(opts: &mut Vec<DhcpOption>, req_params: &[u8]) {
-    let mut pos = 0;
-    let h = &[
-        DHCP_MESSAGE_TYPE as u8,
-        SERVER_IDENTIFIER as u8,
-        IP_ADDRESS_LEASE_TIME as u8,
-    ] as &[u8];
-    for z in [h, req_params].iter() {
-        for r in z.iter() {
-            let mut found = false;
-            let mut at = 0;
-            for (i, o) in opts[pos..].iter().enumerate() {
-                if o.code == *r {
-                    found = true;
-                    at = i + pos;
-                    break;
-                }
-            }
-            if found {
-                opts.swap(pos, at);
-                pos = pos + 1;
-            }
-        }
-    }
-    opts.truncate(pos);
 }

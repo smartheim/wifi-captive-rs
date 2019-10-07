@@ -54,29 +54,27 @@ impl From<u32> for Connectivity {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::super::{connection::list_connections, device::get_devices, NetworkManager};
-    use super::*;
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ConnectionState {
+    Unknown = 0,
+    Activating = 1,
+    Activated = 2,
+    Deactivating = 3,
+    Deactivated = 4,
+}
 
-    #[test]
-    fn test_get_connections() {
-        let manager = NetworkManager::new();
-        let connections = list_connections(&manager).unwrap();
-        assert!(connections.len() > 0);
-    }
-
-    #[test]
-    fn test_get_devices() {
-        let manager = NetworkManager::new();
-        let devices = get_devices(&manager).unwrap();
-        assert!(devices.len() > 0);
-    }
-
-    #[test]
-    fn test_get_connectivity() {
-        let manager = NetworkManager::new();
-        let connectivity = manager.check_connectivity().unwrap();
-        assert_eq!(connectivity, Connectivity::Full);
+impl From<u32> for ConnectionState {
+    fn from(state: u32) -> Self {
+        match state {
+            0 => ConnectionState::Unknown,
+            1 => ConnectionState::Activating,
+            2 => ConnectionState::Activated,
+            3 => ConnectionState::Deactivating,
+            4 => ConnectionState::Deactivated,
+            _ => {
+                warn!("Undefined connection state: {}", state);
+                ConnectionState::Unknown
+            },
+        }
     }
 }
