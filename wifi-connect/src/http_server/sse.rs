@@ -4,9 +4,8 @@
 //! This library uses async hyper to support many concurrent push
 //! connections. It supports multiple parallel channels.
 
-use hyper::{Body, Chunk, Request, Response};
+use hyper::{Body, Chunk, Response};
 use std::net::IpAddr;
-use std::time::{Duration, Instant};
 
 use crate::nm::WifiConnectionEvent;
 use std::collections::LinkedList;

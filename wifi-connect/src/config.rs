@@ -67,14 +67,13 @@ pub struct Config {
     #[structopt(short, long)]
     pub quit_after_connected: bool,
 
-    /// A writable file where the service stores an established connection.
-    /// Can be empty to not store a successfully established connection.
-    /// Network manager will, if not run in stateless mode, store the last successful connection as well.
+    /// The directory where the html files reside.
     #[structopt(
         parse(from_os_str),
         short,
         long = "connection-store",
         env = "CONNECTION_STORE"
     )]
+    #[cfg(not(feature = "includeui"))]
     pub ui_directory: Option<PathBuf>,
 }

@@ -106,6 +106,25 @@ fn credentials_from_config(config: &Config) -> AccessPointCredentials {
     }
 }
 
+
+fn credentials_from_data(ssid: SSID, passphrase: Option<String>, identity: Option<String>, mode: String) -> AccessPointCredentials {
+    if let Some(identity) = &config.identity {
+        AccessPointCredentials::Enterprise {
+            identity: identity.clone(),
+            passphrase: match config.passphrase {
+                Some(ref v) => v.clone(),
+                None => String::new(),
+            },
+        }
+    } else if let Some(pwd) = &config.passphrase {
+        AccessPointCredentials::Wpa {
+            passphrase: pwd.clone(),
+        }
+    } else {
+        AccessPointCredentials::None
+    }
+}
+
 //let access_points = get_access_points(&device)?;
 //self.portal_connection = Some(create_portal(&device, &config.ssid, &config.gateway, &config.passphrase)?);
 

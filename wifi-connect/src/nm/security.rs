@@ -4,6 +4,7 @@ use dbus::nonblock;
 use dbus::nonblock::SyncConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use crate::CaptivePortalError;
 
 #[derive(Debug)]
 pub enum AccessPointCredentials {
@@ -86,6 +87,24 @@ impl Security {
         }
     }
 }
+
+pub fn credentials_from_data(passphrase: Option<String>, identity: Option<String>, mode: String) -> Result<AccessPointCredentials, CaptivePortalError> {
+    match &mode[..] {
+        "enterprise" => Ok(AccessPointCredentials::Enterprise {
+            identity: identity.ok_or(CaptivePortalError::no_shared_key())?,
+            passphrase: passphrase.ok_or(CaptivePortalError::no_shared_key())?,
+        }),
+        "wpa" => Ok(AccessPointCredentials::Wpa {
+            passphrase: passphrase.ok_or(CaptivePortalError::no_shared_key())?,
+        }),
+        "wep" => Ok(AccessPointCredentials::Wep {
+            passphrase: passphrase.ok_or(CaptivePortalError::no_shared_key())?,
+        }),
+        "none" => Ok(AccessPointCredentials::None),
+        _ => Err(CaptivePortalError::Generic("Expected an encryption mode"))
+    }
+}
+
 
 pub async fn get_access_point_security(
     conn: Arc<SyncConnection>,

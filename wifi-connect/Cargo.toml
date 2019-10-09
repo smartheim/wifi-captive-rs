@@ -11,43 +11,43 @@ license = "Apache-2.0"
 edition = "2018"
 
 [dependencies]
-serde = { version = "^1.0", features = ["derive"] }
-serde_json = "^1.0"
-serde_derive = "^1.0"
-log = "0.3"
-env_logger = "^0.4"
-nix = "^0"
+serde = { version = "1.0.101", features = ["derive"] }
+serde_json = "1.0.41"
+serde_derive = "1.0.101"
+log = "0.4.8"
+env_logger = "0.7.0"
+nix = "0.15.0"
 
-bitflags = "^1"
-ascii = "^0"
-bitintr = "0.2.0"
+bitflags = "1.2.0"
+ascii = "1.0.0"
+bitintr = "0.3.0"
 structopt = "0.3.2"
 failure = "0.1.5"
 
 dbus = "^0"
-dbus-tokio = { version ="^0", features = ["nightly"] }
 futures = { version = "^0.3.0-alpha.18", package = "futures-preview", features = ["compat"] }
 futures-util =  { version = "^0.3.0-alpha.18", package = "futures-util-preview"}
 futures-channel =  { version = "^0.3.0-alpha.18", package = "futures-channel-preview"}
-tokio-net = "0.2.0-alpha.4"
-tokio-timer = "0.3.0-alpha.4"
-tokio = { version="0.2.0-alpha.4", features = ["sync"]}
-stream-cancel = "0.4.4"
+tokio-net = {version="0.2.0-alpha.6",features = ["signal"]}
+tokio-timer = "0.3.0-alpha.6"
+tokio = { version = "0.2.0-alpha.6", features = ["sync"] }
 pin-utils = "0.1.0-alpha.4"
 
 # For dhcp server
-enum-primitive-derive = "^0.1"
-num-traits = "^0.1"
+enum-primitive-derive = "0.1.2"
+num-traits = "0.2.8"
 net2 = "0.2.33"
 
 # Web server
-hyper = "0.13.0-alpha.1"
+hyper = "0.13.0-alpha.4"
 mime_guess = "2.0.1"
 include_dir = "0.2.1"
 chrono = "0.4.9"
+mio = "0.6.19"
 
 [patch.crates-io]
-dbus = { git = 'https://github.com/diwic/dbus-rs' }
+#dbus = { git = 'https://github.com/diwic/dbus-rs' }
+dbus = { path = '../dbus-rs/dbus' }
 
 [features]
 default = []

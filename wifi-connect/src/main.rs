@@ -7,6 +7,7 @@ mod config;
 mod errors;
 mod nm;
 mod state_machine;
+mod state_machine_portal_helper;
 mod utils;
 
 mod dhcp_server;
@@ -19,7 +20,7 @@ pub use utils::receive_or_exit;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init()?;
+    env_logger::init();
 
     let config: config::Config = config::Config::from_args();
 

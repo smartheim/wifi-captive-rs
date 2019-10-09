@@ -24,8 +24,8 @@ pub trait Properties {
     ) -> nonblock::MethodReply<()>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Properties
-    for nonblock::Proxy<'a, C>
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target=T>> Properties
+for nonblock::Proxy<'a, C>
 {
     fn get(
         &self,
@@ -37,7 +37,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Propertie
             "Get",
             (interface_name, property_name),
         )
-        .and_then(|r: (arg::Variant<Box<dyn arg::RefArg + 'static>>,)| Ok(r.0))
+            .and_then(|r: (arg::Variant<Box<dyn arg::RefArg + 'static>>, )| Ok(r.0))
     }
 
     fn get_all(
@@ -49,13 +49,13 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Propertie
         self.method_call(
             "org.freedesktop.DBus.Properties",
             "GetAll",
-            (interface_name,),
+            (interface_name, ),
         )
-        .and_then(
-            |r: (
-                ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
-            )| Ok(r.0),
-        )
+            .and_then(
+                |r: (
+                    ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+                )| Ok(r.0),
+            )
     }
 
     fn set(
@@ -76,7 +76,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Propertie
 pub struct PropertiesPropertiesChanged {
     pub interface_name: String,
     pub changed_properties:
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+    ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
     pub invalidated_properties: Vec<String>,
 }
 
@@ -107,12 +107,12 @@ pub trait Introspectable {
     fn introspect(&self) -> nonblock::MethodReply<String>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Introspectable
-    for nonblock::Proxy<'a, C>
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target=T>> Introspectable
+for nonblock::Proxy<'a, C>
 {
     fn introspect(&self) -> nonblock::MethodReply<String> {
         self.method_call("org.freedesktop.DBus.Introspectable", "Introspect", ())
-            .and_then(|r: (String,)| Ok(r.0))
+            .and_then(|r: (String, )| Ok(r.0))
     }
 }
 
@@ -121,8 +121,8 @@ pub trait Peer {
     fn get_machine_id(&self) -> nonblock::MethodReply<String>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Peer
-    for nonblock::Proxy<'a, C>
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target=T>> Peer
+for nonblock::Proxy<'a, C>
 {
     fn ping(&self) -> nonblock::MethodReply<()> {
         self.method_call("org.freedesktop.DBus.Peer", "Ping", ())
@@ -130,7 +130,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Peer
 
     fn get_machine_id(&self) -> nonblock::MethodReply<String> {
         self.method_call("org.freedesktop.DBus.Peer", "GetMachineId", ())
-            .and_then(|r: (String,)| Ok(r.0))
+            .and_then(|r: (String, )| Ok(r.0))
     }
 }
 
@@ -141,8 +141,8 @@ pub trait OrgFreedesktopNetworkManagerDeviceStatistics {
     fn rx_bytes(&self) -> nonblock::MethodReply<u64>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
-    OrgFreedesktopNetworkManagerDeviceStatistics for nonblock::Proxy<'a, C>
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target=T>>
+OrgFreedesktopNetworkManagerDeviceStatistics for nonblock::Proxy<'a, C>
 {
     fn refresh_rate_ms(&self) -> nonblock::MethodReply<u32> {
         <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
@@ -181,7 +181,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
 #[derive(Debug)]
 pub struct OrgFreedesktopNetworkManagerDeviceStatisticsPropertiesChanged {
     pub properties:
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+    ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
 }
 
 impl arg::AppendAll for OrgFreedesktopNetworkManagerDeviceStatisticsPropertiesChanged {
@@ -210,7 +210,6 @@ pub trait OrgFreedesktopNetworkManagerDeviceWireless {
     fn get_all_access_points(&self) -> nonblock::MethodReply<Vec<dbus::Path<'static>>>;
     fn request_scan(
         &self,
-        options: ::std::collections::HashMap<&str, arg::Variant<Box<dyn arg::RefArg>>>,
     ) -> nonblock::MethodReply<()>;
     fn hw_address(&self) -> nonblock::MethodReply<String>;
     fn perm_hw_address(&self) -> nonblock::MethodReply<String>;
@@ -222,8 +221,8 @@ pub trait OrgFreedesktopNetworkManagerDeviceWireless {
     fn last_scan(&self) -> nonblock::MethodReply<i64>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
-    OrgFreedesktopNetworkManagerDeviceWireless for nonblock::Proxy<'a, C>
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target=T>>
+OrgFreedesktopNetworkManagerDeviceWireless for nonblock::Proxy<'a, C>
 {
     fn get_access_points(&self) -> nonblock::MethodReply<Vec<dbus::Path<'static>>> {
         self.method_call(
@@ -231,7 +230,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
             "GetAccessPoints",
             (),
         )
-        .and_then(|r: (Vec<dbus::Path<'static>>,)| Ok(r.0))
+            .and_then(|r: (Vec<dbus::Path<'static>>, )| Ok(r.0))
     }
 
     fn get_all_access_points(&self) -> nonblock::MethodReply<Vec<dbus::Path<'static>>> {
@@ -240,17 +239,16 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
             "GetAllAccessPoints",
             (),
         )
-        .and_then(|r: (Vec<dbus::Path<'static>>,)| Ok(r.0))
+            .and_then(|r: (Vec<dbus::Path<'static>>, )| Ok(r.0))
     }
 
     fn request_scan(
         &self,
-        options: ::std::collections::HashMap<&str, arg::Variant<Box<dyn arg::RefArg>>>,
     ) -> nonblock::MethodReply<()> {
         self.method_call(
             "org.freedesktop.NetworkManager.Device.Wireless",
             "RequestScan",
-            (options,),
+            (),
         )
     }
 
@@ -322,7 +320,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
 #[derive(Debug)]
 pub struct OrgFreedesktopNetworkManagerDeviceWirelessPropertiesChanged {
     pub properties:
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+    ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
 }
 
 impl arg::AppendAll for OrgFreedesktopNetworkManagerDeviceWirelessPropertiesChanged {
@@ -454,8 +452,8 @@ pub trait OrgFreedesktopNetworkManagerDevice {
     fn ip6_connectivity(&self) -> nonblock::MethodReply<u32>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
-    OrgFreedesktopNetworkManagerDevice for nonblock::Proxy<'a, C>
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target=T>>
+OrgFreedesktopNetworkManagerDevice for nonblock::Proxy<'a, C>
 {
     fn reapply(
         &self,
@@ -486,7 +484,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
         self.method_call(
             "org.freedesktop.NetworkManager.Device",
             "GetAppliedConnection",
-            (flags,),
+            (flags, ),
         )
     }
 

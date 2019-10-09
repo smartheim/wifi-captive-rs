@@ -134,11 +134,14 @@ impl CaptivePortalError {
     pub fn pre_shared_key(info: String) -> Self {
         CaptivePortalError::from(format!("Invalid Pre-Shared-Key: {}", info))
     }
+    pub fn no_shared_key() -> Self {
+        CaptivePortalError::Generic("Passphrase required!")
+    }
     pub fn dbus_api(info: String) -> Self {
         CaptivePortalError::from(format!("D-Bus failure: {}", info))
     }
     pub fn start_active_network_manager() -> Self {
-        CaptivePortalError::Generic("start_active_network_manager")
+        CaptivePortalError::Generic("Failed to start the network manager!")
     }
     pub fn hotspot_failed() -> Self {
         CaptivePortalError::Generic("Failed to initiate a hotspot")

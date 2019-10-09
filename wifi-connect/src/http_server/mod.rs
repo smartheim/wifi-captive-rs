@@ -6,36 +6,25 @@ use std::net::{SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::errors::CaptivePortalError;
-use core::fmt;
 use futures_util::future::Either;
 use futures_util::try_future::try_select;
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
 
 use crate::nm::{NetworkManagerEvent, WifiConnections, WifiConnectionEvent};
 use std::time::Duration;
+use std::path::{Path, PathBuf};
 
 pub(crate) mod sse;
+mod file_serve;
 
 #[derive(Deserialize, Debug)]
 pub struct WifiConnectionRequest {
-    ssid: String,
-    identity: Option<String>,
-    passphrase: Option<String>,
-    hw: Option<String>,
-}
-
-type HttpServerStateSync = Arc<Mutex<HttpServerState>>;
-
-/// The state including the wifi connection list.
-pub struct HttpServerState {
-    /// If the user selected a connection in the UI, this sender will be called
-    connection_sender: Option<tokio::sync::oneshot::Sender<Option<WifiConnectionRequest>>>,
-    pub connections: WifiConnections,
-    pub server_addr: SocketAddrV4,
-    pub sse: sse::Clients,
-    pub refresh_request: tokio::sync::mpsc::Sender<u32>,
-    pub refresh_request_receiver: tokio::sync::mpsc::Receiver<u32>,
+    /// wpa, wep, open, enterprise
+    pub mode: String,
+    pub ssid: String,
+    pub identity: Option<String>,
+    pub passphrase: Option<String>,
+    pub hw: Option<String>,
 }
 
 /// The http server.
@@ -45,68 +34,33 @@ pub struct HttpServer {
     /// The server state.
     pub state: HttpServerStateSync,
     pub server_addr: SocketAddrV4,
+    pub ui_path: PathBuf,
 }
 
-#[cfg(feature = "includeui")]
-/// A reference to all binary embedded ui files
-const PROJECT_DIR: include_dir::Dir = include_dir!("ui");
-
-/// The file wrapper struct deals with the fact that we either read a file from the filesystem
-/// or use a binary embedded variant. That means we either allocate a vector for the file content,
-/// or use a pointer to the data without any allocation.
-struct FileWrapper {
-    path: PathBuf,
-    contents: Vec<u8>,
-    embedded_file: Option<include_dir::File<'static>>,
+/// The state including the wifi connection list.
+pub struct HttpServerState {
+    /// If the user selected a connection in the UI, this sender will be called
+    connection_sender: Option<tokio::sync::oneshot::Sender<Option<WifiConnectionRequest>>>,
+    pub connections: WifiConnections,
+    pub server_addr: SocketAddrV4,
+    pub sse: sse::Clients,
+    pub network_manager: crate::nm::NetworkManager,
 }
 
-impl fmt::Display for NetworkManagerEvent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
-    }
-}
+type HttpServerStateSync = Arc<Mutex<HttpServerState>>;
 
-impl<'a> FileWrapper {
-    #[cfg(feature = "includeui")]
-    pub fn from_included(file: &include_dir::File) -> FileWrapper {
-        Self {
-            path: PathBuf::from(file.path),
-            contents: Vec::with_capacity(0),
-            embedded_file: Some(file.clone()),
-        }
-    }
-    pub fn from_filesystem(path: &str) -> Option<FileWrapper> {
-        use std::fs;
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let file = Path::new(manifest_dir).join("ui").join(path);
-        fs::read(&file).ok().and_then(|buf| {
-            Some(FileWrapper {
-                path: file,
-                contents: buf,
-                embedded_file: None,
-            })
-        })
-    }
-
-    pub fn path(&'a self) -> &'a Path {
-        match self.embedded_file {
-            Some(f) => f.path(),
-            None => &self.path,
-        }
-    }
-
-    /// The file's raw contents.
-    /// This method consumes the file wrapper
-    pub fn contents(self) -> Body {
-        match self.embedded_file {
-            Some(f) => Body::from(f.contents),
-            None => Body::from(self.contents),
-        }
+pub async fn user_requests_wifi_list_refresh(state: HttpServerStateSync) -> StatusCode {
+    let nm = state.lock().unwrap().network_manager.clone();
+    if let Ok(_) = nm.scan_networks().await {
+        StatusCode::OK
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
     }
 }
 
-async fn echo(
+async fn http_router(
     state: HttpServerStateSync,
+    ui_path: PathBuf,
     req: Request<Body>,
     src: SocketAddr,
 ) -> Result<Response<Body>, CaptivePortalError> {
@@ -128,58 +82,11 @@ async fn echo(
             info!("clients {}", state.sse.len());
             return Ok(result);
         } else if req.uri().path() == "/refresh" {
-            let mut state = state.lock().unwrap();
-            let _ = state.refresh_request.send(0);
-            *response.status_mut() = StatusCode::OK;
+            *response.status_mut() = user_requests_wifi_list_refresh(state.clone()).await;
             return Ok(response);
         }
 
-        let path = &req.uri().path()[1..];
-
-        let file = match () {
-            #[cfg(not(feature = "includeui"))]
-            () => FileWrapper::from_filesystem(path),
-            #[cfg(feature = "includeui")]
-            () => PROJECT_DIR
-                .get_file(path)
-                .and_then(|f| Some(FileWrapper::from_included(&f))),
-        };
-        // A captive portal catches all GET requests (that accept */* or text) and redirects to the main page.
-        if file.is_none() {
-            if let Some(v) = req.headers().get("Accept") {
-                let accept = v.to_str().unwrap();
-                if accept.contains("text") || accept.contains("*/*") {
-                    let state = state.lock().unwrap();
-                    let redirect_loc = format!(
-                        "http://{}:{}/index.html",
-                        state.server_addr.ip().to_string(),
-                        state.server_addr.port()
-                    );
-                    *response.status_mut() = StatusCode::FOUND;
-                    response
-                        .headers_mut()
-                        .append("Location", HeaderValue::from_str(&redirect_loc).unwrap());
-                    return Ok(response);
-                }
-            }
-        }
-
-        // Serve UI
-        if let Some(file) = file {
-            let mime = match file.path().extension() {
-                Some(ext) => match mime_guess::from_ext(ext.to_str().unwrap()).first() {
-                    Some(v) => v.to_string(),
-                    None => "application/octet-stream".to_owned(),
-                },
-                None => "application/octet-stream".to_owned(),
-            };
-            info!("Serve {} for {}", mime, path);
-            response
-                .headers_mut()
-                .append("Content-Type", HeaderValue::from_str(&mime).unwrap());
-            *response.body_mut() = file.contents();
-            return Ok(response);
-        }
+        return file_serve::serve_file(&ui_path, response, &req, &state);
     }
     if req.method() == Method::POST && req.uri().path() == "/connect" {
         // Body is a stream of chunks of bytes.
@@ -214,24 +121,21 @@ impl HttpServer {
         tokio::sync::oneshot::Receiver<Option<WifiConnectionRequest>>,
         HttpServerStateSync,
         SocketAddrV4,
+        PathBuf,
     ) {
         (
             self.exit_handler,
             self.connection_receiver,
             self.state,
             self.server_addr,
+            self.ui_path
         )
     }
-}
 
-impl HttpServer {
-    pub fn new(server_addr: SocketAddrV4) -> (HttpServer, tokio::sync::oneshot::Sender<()>) {
+    pub fn new(server_addr: SocketAddrV4, nm: crate::nm::NetworkManager, ui_path: PathBuf) -> (HttpServer, tokio::sync::oneshot::Sender<()>) {
         let (tx, exit_handler) = tokio::sync::oneshot::channel::<()>();
         let (connection_sender, connection_receiver) =
             tokio::sync::oneshot::channel::<Option<WifiConnectionRequest>>();
-
-        let (refresh_request, refresh_request_receiver) =
-            tokio::sync::mpsc::channel::<u32>(1);
 
         (
             HttpServer {
@@ -240,12 +144,12 @@ impl HttpServer {
                 server_addr: server_addr.clone(),
                 state: Arc::new(Mutex::new(HttpServerState {
                     connection_sender: Some(connection_sender),
-                    refresh_request,
-                    refresh_request_receiver,
+                    network_manager: nm,
                     connections: WifiConnections(Vec::new()),
                     server_addr,
                     sse: sse::new(),
                 })),
+                ui_path,
             },
             tx,
         )
@@ -256,9 +160,10 @@ impl HttpServer {
     /// when
     pub async fn run(
         self: HttpServer,
-    ) -> Result<Option<WifiConnectionRequest>, super::CaptivePortalError> {
+    ) -> Result<Option<WifiConnectionRequest>, super::CaptivePortalError>
+    {
         // Consume the HttpServer by destructuring into its parts
-        let (exit_handler, connection_receiver, state, server_addr) = self.into();
+        let (exit_handler, connection_receiver, state, server_addr, ui_path) = self.into();
 
         // We need a cloned state for each future in this method
         let state_for_ping = state.clone();
@@ -267,8 +172,9 @@ impl HttpServer {
             let remote_addr = socket.remote_addr();
             // There is a future constructed in this future. Time to clone again.
             let state = state.clone();
+            let ui_path = ui_path.clone();
             async move {
-                let fun = service_fn(move |req| echo(state.clone(), req, remote_addr));
+                let fun = service_fn(move |req| http_router(state.clone(), ui_path.clone(), req, remote_addr));
                 Ok::<_, hyper::Error>(fun)
             }
         });
@@ -292,7 +198,7 @@ impl HttpServer {
             // Endless loop to send ping events ...
             loop {
                 // ... every 2 seconds
-                let sleep = tokio_timer::sleep(Duration::from_secs(2));
+                let sleep = tokio_timer::delay_for(Duration::from_secs(2));
                 pin_mut!(sleep);
                 // If the exit handler is called however, quit the loop
                 let r = futures_util::future::select(sleep, &mut keep_alive_exit_handler).await;
@@ -325,10 +231,11 @@ impl HttpServer {
                     let mut shutdown_state = graceful_shutdown_state_clone.lock().unwrap();
                     *shutdown_state = f.0;
                     info!("Received connect state {:?}", *shutdown_state);
-                    let _ = keep_alive_exit.send(());
                 }
                 _ => (),
             };
+            // Stop server-send-events keep alive and refresh request future
+            let _ = keep_alive_exit.send(());
             ()
         });
 

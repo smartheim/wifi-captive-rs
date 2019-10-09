@@ -1,14 +1,14 @@
 use super::config::Config;
 
-use crate::http_server::sse;
-use crate::nm::{AccessPointCredentials, NetworkManager, NetworkManagerEvent, WifiConnection, WifiConnectionEvent, SSID, NetworkManagerState};
-use crate::{dhcp_server, dns_server, http_server, CaptivePortalError};
-use futures_util::future::Either;
-use futures_util::try_future::try_select;
+use crate::http_server::WifiConnectionRequest;
+use crate::nm::{NetworkManager, NetworkManagerState};
+use crate::CaptivePortalError;
 use log::info;
-use pin_utils::pin_mut;
-use std::net::SocketAddrV4;
 use std::time::Duration;
+use tokio_net::signal;
+use futures_util::StreamExt;
+use futures_util::future::Either;
+
 
 /// The programs state machine. Each state carries its required data, no side-effects.
 /// The configuration and network manager connection are moved between states.
@@ -43,7 +43,8 @@ pub enum StateMachine {
     /// Listens to network manager for connection state changes
     ///
     /// # Transitions:
-    /// **ActivatePortal** -> On connection lost after a grace period.
+    /// **TryReconnect** -> On connection lost
+    /// **Exit** ->  On ctrl+c
     Connected(Config, NetworkManager),
 
     /// Activates a wifi hotspot and portal page.
@@ -56,6 +57,7 @@ pub enum StateMachine {
     /// # Transitions:
     /// **Connect** -> When the user requests to connect to a wifi access point via the http server.
     /// **Connected** -> When a connection could be established
+    /// **Exit** ->  On ctrl+c
     ActivatePortal(Config, NetworkManager),
 
     /// Tries to connect to the given access point.
@@ -63,7 +65,7 @@ pub enum StateMachine {
     /// # Transitions:
     /// **Connected** First stores the ssid+passphrase+identity in Config then transition in the connected state.
     /// **ActivatePortal** If the connection fails after a few attempts
-    Connect(Config, NetworkManager, SSID, AccessPointCredentials),
+    Connect(Config, NetworkManager, WifiConnectionRequest),
 
     /// Quits the program
     ///
@@ -84,11 +86,11 @@ impl StateMachine {
                         Some(StateMachine::ActivatePortal(config, nm))
                     }
                     NetworkManagerState::Disconnecting | NetworkManagerState::Connecting => {
-                        tokio_timer::sleep(Duration::from_millis(500)).await;
+                        tokio_timer::delay_for(Duration::from_millis(500)).await;
                         Some(StateMachine::TryReconnect(config, nm))
                     }
                     NetworkManagerState::ConnectedLocal | NetworkManagerState::ConnectedSite | NetworkManagerState::ConnectedGlobal => {
-                        Some(StateMachine::TryReconnect(config, nm))
+                        Some(StateMachine::Connected(config, nm))
                     }
                 })
             }
@@ -97,90 +99,41 @@ impl StateMachine {
             }
             StateMachine::Connected(config, nm) => {
                 info!("Connected");
-                Ok(Some(StateMachine::Exit(nm)))
+
+                let r = ctrl_c_or_future(nm.print_connection_changes()).await?;
+                match r {
+                    // Ctrl+C
+                    None => Ok(Some(StateMachine::Exit(nm))),
+                    Some(_) => Ok(Some(StateMachine::TryReconnect(config, nm)))
+                }
             }
             StateMachine::ActivatePortal(config, nm) => {
                 info!("Activating portal");
 
-                let (http_server, http_exit) = http_server::HttpServer::new(SocketAddrV4::new(
-                    config.gateway.clone(),
-                    config.listening_port,
-                ));
-
-                let http_state = http_server.state.clone();
-                {
-                    let list = nm.list_access_points().await?;
-                    let mut state = http_state.lock().unwrap();
-                    state.connections.0.extend(list);
+                let r = ctrl_c_or_future(super::state_machine_portal_helper::start_portal(&nm, &config)).await?;
+                match r {
+                    // Ctrl+C
+                    None => Ok(Some(StateMachine::Exit(nm))),
+                    // Either the user has entered a wifi connection or a timeout happened
+                    Some(wifi_connection) => match wifi_connection {
+                        Some(wifi_connection) => Ok(Some(StateMachine::Connect(config, nm, wifi_connection))),
+                        // A timeout means that we should retry to connect to an existing connection
+                        None => Ok(Some(StateMachine::TryReconnect(config, nm)))
+                    }
                 }
-
-                tokio::spawn(async move {
-                    loop {
-                        tokio_timer::sleep(Duration::from_secs(2)).await;
-
-                        use chrono::{Timelike, Utc};
-                        let now = Utc::now();
-                        let hour = now.hour();
-                        let d = format!("{:02}:{:02}:{:02}", hour, now.minute(), now.second(), );
-                        let _e = WifiConnectionEvent {
-                            connection: WifiConnection {
-                                ssid: d,
-                                hw: "some_id".to_owned(),
-                                security: "wpa",
-                                strength: now.minute() as u8,
-                                frequency: 2412,
-                            },
-                            event: NetworkManagerEvent::Added,
-                        };
-                       // http_server::update_network(http_state.clone(),e).await;
-                    }
-                });
-
-                let (mut dns_server, dns_exit) = dns_server::CaptiveDnsServer::new(
-                    SocketAddrV4::new(config.gateway.clone(), config.dns_port),
-                );
-                let (mut dhcp_server, dhcp_exit) = dhcp_server::DHCPServer::new(SocketAddrV4::new(
-                    config.gateway.clone(),
-                    config.dhcp_port,
-                ));
-
-                tokio::spawn(async move {
-                    if let Err(e) = dns_server.run().await {
-                        error!("{}", e);
-                    }
-                });
-                tokio::spawn(async move {
-                    if let Err(e) = dhcp_server.run().await {
-                        error!("{}", e);
-                    }
-                });
-
-                // Wait for any of the given futures (timeout, server) to finish.
-                // If the timer finished, call all exit handlers to make the rest of the futures finish
-
-                let http_server_future = http_server.run();
-                pin_mut!(http_server_future);
-                let timed_future = async move {
-                    tokio_timer::sleep(Duration::from_secs(5500)).await;
-                    Ok(())
-                };
-                pin_mut!(timed_future);
-                let either = try_select(http_server_future, timed_future)
-                    .await
-                    .map_err(|e| e.factor_first().0)?;
-                if let Either::Left((Some(connect_data), _)) = either {
-                    info!("Almost done 2: {:?}", connect_data);
-                }
-
-                let _ = http_exit.send(());
-                let _ = dns_exit.send(());
-                let _ = dhcp_exit.send(());
-
-                Ok(Some(StateMachine::Exit(nm)))
             }
-            StateMachine::Connect(config, nm, network, credentials) => {
+            StateMachine::Connect(config, nm, network) => {
                 info!("Connecting ...");
-                Ok(Some(StateMachine::Exit(nm)))
+
+                let state = nm.connect_to(network.ssid, network.hw, crate::nm::credentials_from_data(network.passphrase, network.identity, network.mode)?).await?;
+                match state {
+                    crate::nm::ConnectionState::Activated => {
+                        Ok(Some(StateMachine::Connected(config, nm)))
+                    }
+                    _ => {
+                        Ok(Some(StateMachine::ActivatePortal(config, nm)))
+                    }
+                }
             }
             StateMachine::Exit(nm) => {
                 info!("Exiting");
@@ -189,4 +142,38 @@ impl StateMachine {
             }
         }
     }
+}
+
+async fn ctrl_c_or_future<F, R>(connect_future: F) -> Result<Option<R>, CaptivePortalError>
+    where F: std::future::Future<Output=Result<R, CaptivePortalError>>,
+          R: Sized {
+    use futures_util::try_future::try_select;
+
+    let ctrl_c = async move {
+        match signal::ctrl_c() {
+            Ok(mut v) => {
+                v.next().await;
+                Ok(())
+            }
+            Err(e) => Err(CaptivePortalError::Generic("signal::ctrl_c() failed"))
+        }
+    };
+    pin_utils::pin_mut!(ctrl_c);
+    pin_utils::pin_mut!(connect_future);
+
+    let r = try_select(connect_future, ctrl_c).await;
+    match r {
+        Err(e) => {
+            if let Either::Left((e, _)) = e {
+                return Err(e);
+            }
+        }
+        Ok(v) => {
+            if let Either::Left((v, _)) = v {
+                return Ok(Some(v));
+            }
+        }
+    }
+
+    Ok(None)
 }

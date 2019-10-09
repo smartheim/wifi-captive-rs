@@ -1,3 +1,42 @@
+fn connect(
+    &self,
+    access_point: &AccessPoint,
+    credentials: &AccessPointCredentials,
+) -> Result<(Connection, ConnectionState), NetworkManagerError> {
+    let mut settings: HashMap<String, VariantMap> = HashMap::new();
+
+    let mut wireless: VariantMap = HashMap::new();
+    add_val(&mut wireless, "ssid", access_point.ssid.data().clone());
+    settings.insert("802-11-wireless".to_string(), wireless);
+
+    prepare_wifi_security_settings(credentials, &mut settings)?;
+
+    let response = self.dbus_manager.dbus.call_with_args(
+        NM_SERVICE_PATH,
+        NM_SERVICE_INTERFACE,
+        "AddAndActivateConnection",
+        &[
+            &settings as &dyn RefArg,
+            &Path::new(&self.path as &str)? as &dyn RefArg,
+            &Path::new(&access_point.path as &str)? as &dyn RefArg,
+        ],
+    )?;
+
+    let (conn_path, _active_connection): (Path, Path) =
+        self.dbus_manager.dbus.extract_two(&response)?;
+    let conn_path = path_to_string(&conn_path)?;
+
+    let connection = Connection::init(self.dbus_manager.clone(), conn_path)?;
+
+    let state = wait_for_connection(
+        &connection,
+        &ConnectionState::Activated,
+        self.dbus_manager.method_timeout(),
+    )?;
+
+    Ok((connection, state))
+}
+
 use super::super::*;
 use crate::network_manager::connection::wait_for_connection;
 use crate::network_manager::dbus::path_to_string;

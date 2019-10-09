@@ -9,25 +9,29 @@ mod generated;
 mod security;
 mod utils;
 mod wifi_settings;
+mod dbus_tokio;
 
 pub use dbus_types::*;
 pub use generated::*;
-pub use security::AccessPointCredentials;
+pub use security::{AccessPointCredentials, credentials_from_data};
 pub use connectivity::{NetworkManagerState, ConnectionState};
 
 //use dbus::channel::MatchingReceiver;
 //use dbus::message::MatchRule;
 
 use dbus::nonblock;
-use dbus_tokio::connection;
 
 use super::CaptivePortalError;
 use dbus::channel::MatchingReceiver;
 use dbus::nonblock::SyncConnection;
 use serde::Serialize;
 use std::net::Ipv4Addr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use crate::nm::wifi_settings::{get_connection_settings, WifiConnectionMode};
+use core::fmt;
+use chrono::{Utc, TimeZone};
+use dbus::message::SignalArgs;
+use futures_util::StreamExt;
 
 pub const NM_INTERFACE: &str = "org.freedesktop.NetworkManager";
 pub const NM_PATH: &str = "/org/freedesktop/NetworkManager";
@@ -69,6 +73,14 @@ pub enum NetworkManagerEvent {
     Removed,
 }
 
+
+impl fmt::Display for NetworkManagerEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
+
 #[derive(Serialize)]
 pub struct WifiConnectionEvent {
     pub connection: WifiConnection,
@@ -78,9 +90,11 @@ pub struct WifiConnectionEvent {
 #[derive(Serialize)]
 pub struct WifiConnections(pub Vec<WifiConnection>);
 
+#[derive(Clone)]
 pub struct NetworkManager {
-    exit_handler: tokio::sync::oneshot::Sender<()>,
+    exit_handler: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
     conn: Arc<SyncConnection>,
+    /// The wifi device. Will always be set, because the service quits if it didn't find a wifi device.
     wifi_device_path: String,
     interface_name: String,
 }
@@ -93,7 +107,7 @@ impl NetworkManager {
         let (exit_handler, exit_receiver) = tokio::sync::oneshot::channel::<()>();
 
         // Connect to the D-Bus session bus (this is blocking, unfortunately).
-        let (resource, conn) = connection::new_system_sync()?;
+        let (resource, conn) = dbus_tokio::new_system_sync()?;
 
         // The resource is a task that should be spawned onto a tokio compatible
         // reactor ASAP. If the resource ever finishes, you lost connection to D-Bus.
@@ -122,16 +136,42 @@ impl NetworkManager {
         let (wifi_device_path, interface_name) =
             utils::find_wifi_device(conn.clone(), &config.interface).await?;
         Ok(NetworkManager {
-            exit_handler,
+            exit_handler: Arc::new(Mutex::new(Some(exit_handler))),
             conn,
             interface_name,
             wifi_device_path,
         })
     }
 
+    /// The active wifi connection path, if any. Is None if there is only an active wired connection
+    pub async fn wifi_active_connection(&self) -> Option<dbus::Path<'_>> {
+        let p = nonblock::Proxy::new(NM_INTERFACE, &self.wifi_device_path, self.conn.clone());
+        use device::OrgFreedesktopNetworkManagerDevice;
+        if let Ok(path) = p.active_connection().await {
+            Some(path)
+        } else {
+            None
+        }
+    }
+
+    /// Scan for access points if the last scan is older than 10 seconds
+    pub async fn scan_networks(&self) -> Result<(), CaptivePortalError> {
+        let p = nonblock::Proxy::new(NM_INTERFACE, &self.wifi_device_path, self.conn.clone());
+        use device::OrgFreedesktopNetworkManagerDeviceWireless;
+        use chrono::Duration;
+        let last_scan = chrono::Utc::now() - Utc.timestamp(p.last_scan().await?, 0);
+        if last_scan > Duration::seconds(10) {
+            p.request_scan().await?;
+        }
+        Ok(())
+    }
+
     /// Terminates this network manager dbus connection
     pub fn quit(self) {
-        let _ = self.exit_handler.send(());
+        let mut eh = self.exit_handler.lock().unwrap();
+        if let Some(eh) = eh.take() {
+            let _ = eh.send(());
+        }
     }
 
     pub async fn create_start_hotspot(
@@ -156,8 +196,6 @@ impl NetworkManager {
                 }
             }
         }
-
-        let ssid_user_string = ssid.to_string();
 
         let settings =
             wifi_settings::make_arguments_for_sta(ssid, password, address, &self.interface_name)?;
@@ -188,6 +226,39 @@ impl NetworkManager {
         Ok(conn_path)
     }
 
+    pub async fn print_access_point_changes(&self) -> Result<(), CaptivePortalError> {
+        use dbus_tokio::SignalStream;
+
+        use access_point::OrgFreedesktopNetworkManagerAccessPointPropertiesChanged as APChanged;
+        let rule = APChanged::match_rule(Some(&NM_INTERFACE.to_owned().into()), None).static_clone();
+        let mut stream: SignalStream<APChanged> = SignalStream::new(self.conn.clone(), rule).await?;
+        pin_utils::pin_mut!(stream);
+        while let Some((value, path)) = stream.next().await {
+            println!("Access point changed properties: {:?} on {}", value.properties, path);
+        }
+        Ok(())
+    }
+
+    pub async fn print_connection_changes(&self) -> Result<(), CaptivePortalError> {
+        use dbus_tokio::SignalStream;
+        use connection_active::OrgFreedesktopNetworkManagerConnectionActiveStateChanged as ConnectionActiveChanged;
+
+        let path = self.wifi_active_connection().await;
+        if path.is_none() {
+            return Ok(());
+        }
+        let path = path.unwrap();
+        let rule = ConnectionActiveChanged::match_rule(None, None).static_clone();
+
+        let mut stream: SignalStream<ConnectionActiveChanged> = SignalStream::new(self.conn.clone(), rule).await?;
+        pin_utils::pin_mut!(stream);
+        while let Some((value, path)) = stream.next().await {
+            println!("Connection state changed: {:?} {} on {}", ConnectionState::from(value.state), value.reason, path);
+        }
+
+        Ok(())
+    }
+
     /// The returned future resolves when either the timeout expired or state of the
     /// **active** connection (eg /org/freedesktop/NetworkManager/ActiveConnection/12) is the or changes into
     /// the expected state.
@@ -210,7 +281,6 @@ impl NetworkManager {
 
         let conn = self.conn.clone();
         //TODO simply with new dbus crate version and
-        use dbus::message::SignalArgs;
         let match_rule = ConnectionActiveChanged::match_rule(None, None);
         let m = match_rule.match_str();
         //use dbus::nonblock::stdintf::org_freedesktop_dbus;
@@ -255,8 +325,9 @@ impl NetworkManager {
     pub async fn connect_to(
         &self,
         ssid: SSID,
+        hw: Option<String>,
         credentials: security::AccessPointCredentials,
-    ) -> Result<Vec<WifiConnection>, CaptivePortalError> {
+    ) -> Result<ConnectionState, CaptivePortalError> {
         unimplemented!()
     }
 
