@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="CPP_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/libdbus-sys/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/libdbus-sys/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/libdbus-sys/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/libdbus-sys/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-tokio/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-tokio/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-tokio/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-tokio/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-codegen-tests/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-codegen-tests/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-codegen-tests/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-codegen-tests/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-codegen/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-codegen/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-codegen/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus-codegen/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/dbus/benches" isTestSource="true" />
+      <excludeFolder url="file://$MODULE_DIR$/dbus-codegen-tests/target" />
+      <excludeFolder url="file://$MODULE_DIR$/dbus-codegen/target" />
+      <excludeFolder url="file://$MODULE_DIR$/dbus-tokio/target" />
+      <excludeFolder url="file://$MODULE_DIR$/dbus/target" />
+      <excludeFolder url="file://$MODULE_DIR$/libdbus-sys/target" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>
