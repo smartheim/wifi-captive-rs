@@ -1,3 +1,5 @@
+//! A DNS Record structure and its encoding and decoding
+
 use std::io::Result;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
@@ -68,9 +70,9 @@ impl DnsRecord {
                 );
 
                 Ok(DnsRecord::A {
-                    domain: domain,
-                    addr: addr,
-                    ttl: ttl,
+                    domain,
+                    addr,
+                    ttl,
                 })
             },
             QueryType::AAAA => {
@@ -100,9 +102,9 @@ impl DnsRecord {
                 buffer.read_qname(&mut ns)?;
 
                 Ok(DnsRecord::NS {
-                    domain: domain,
+                    domain,
                     host: ns,
-                    ttl: ttl,
+                    ttl,
                 })
             },
             QueryType::CNAME => {
@@ -110,9 +112,9 @@ impl DnsRecord {
                 buffer.read_qname(&mut cname)?;
 
                 Ok(DnsRecord::CNAME {
-                    domain: domain,
+                    domain,
                     host: cname,
-                    ttl: ttl,
+                    ttl,
                 })
             },
             QueryType::MX => {
@@ -121,20 +123,20 @@ impl DnsRecord {
                 buffer.read_qname(&mut mx)?;
 
                 Ok(DnsRecord::MX {
-                    domain: domain,
-                    priority: priority,
+                    domain,
+                    priority,
                     host: mx,
-                    ttl: ttl,
+                    ttl,
                 })
             },
             QueryType::UNKNOWN(_) => {
                 buffer.step(data_len as usize)?;
 
                 Ok(DnsRecord::UNKNOWN {
-                    domain: domain,
+                    domain,
                     qtype: qtype_num,
-                    data_len: data_len,
-                    ttl: ttl,
+                    data_len,
+                    ttl,
                 })
             },
         }

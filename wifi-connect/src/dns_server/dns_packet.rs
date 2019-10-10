@@ -1,3 +1,5 @@
+//! A DNS Packet (which contains DNS Records and a DNS Header) and its encoding and decoding
+
 use std::io::Result;
 
 use super::byte_buffer::BytePacketBuffer;

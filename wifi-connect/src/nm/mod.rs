@@ -14,10 +14,7 @@ mod dbus_tokio;
 pub use dbus_types::*;
 pub use generated::*;
 pub use security::{AccessPointCredentials, credentials_from_data};
-pub use connectivity::{NetworkManagerState, ConnectionState};
-
-//use dbus::channel::MatchingReceiver;
-//use dbus::message::MatchRule;
+pub use connectivity::{NetworkManagerState, ConnectionState, NETWORK_MANAGER_STATE_CONNECTED, NETWORK_MANAGER_STATE_NOT_CONNECTED};
 
 use dbus::nonblock;
 
@@ -32,6 +29,9 @@ use chrono::{Utc, TimeZone};
 use dbus::message::SignalArgs;
 use futures_util::StreamExt;
 use bitflags::_core::time::Duration;
+use std::collections::HashMap;
+use enumflags2::BitFlags;
+use crate::nm::connectivity::NETWORK_MANAGER_STATE_TEMP;
 
 pub const NM_INTERFACE: &str = "org.freedesktop.NetworkManager";
 pub const NM_PATH: &str = "/org/freedesktop/NetworkManager";
@@ -45,9 +45,6 @@ pub const NM_ACTIVE_INTERFACE: &str = "org.freedesktop.NetworkManager.Connection
 pub const NM_DEVICE_INTERFACE: &str = "org.freedesktop.NetworkManager.Device";
 pub const NM_WIRELESS_INTERFACE: &str = "org.freedesktop.NetworkManager.Device.Wireless";
 pub const NM_ACCESS_POINT_INTERFACE: &str = "org.freedesktop.NetworkManager.AccessPoint";
-
-pub const UNKNOWN_CONNECTION: &str = "org.freedesktop.NetworkManager.UnknownConnection";
-pub const METHOD_RETRY_ERROR_NAMES: &[&str; 1] = &[UNKNOWN_CONNECTION];
 
 /// A wifi SSID
 /// According to last standard 802.11-2012 (Section 6.3.11.2.2),
@@ -111,8 +108,8 @@ pub struct AccessPointChanged {
     pub event: NetworkManagerEvent,
 }
 
-type APAddedType = dbus_tokio::SignalStream<device::OrgFreedesktopNetworkManagerDeviceWirelessAccessPointAdded, AccessPointChanged>;
-type APRemovedType = dbus_tokio::SignalStream<device::OrgFreedesktopNetworkManagerDeviceWirelessAccessPointRemoved, AccessPointChanged>;
+type APAddedType = dbus_tokio::SignalStream<device::DeviceWirelessAccessPointAdded, AccessPointChanged>;
+type APRemovedType = dbus_tokio::SignalStream<device::DeviceWirelessAccessPointRemoved, AccessPointChanged>;
 pub type AccessPointChangeReturnType = futures_util::stream::Select<APAddedType, APRemovedType>;
 
 impl NetworkManager {
@@ -161,25 +158,14 @@ impl NetworkManager {
         })
     }
 
-    /// The active wifi connection path, if any.
-    pub async fn wifi_active_connection(&self) -> Option<dbus::Path<'_>> {
-        let p = nonblock::Proxy::new(NM_INTERFACE, &self.wifi_device_path, self.conn.clone());
-        use device::OrgFreedesktopNetworkManagerDevice;
-        if let Ok(path) = p.active_connection().await {
-            Some(path)
-        } else {
-            None
-        }
-    }
-
     /// Scan for access points if the last scan is older than 10 seconds
     pub async fn scan_networks(&self) -> Result<(), CaptivePortalError> {
-        let p = nonblock::Proxy::new(NM_INTERFACE, &self.wifi_device_path, self.conn.clone());
-        use device::OrgFreedesktopNetworkManagerDeviceWireless;
+        let p = nonblock::Proxy::new(NM_WIRELESS_INTERFACE, &self.wifi_device_path, self.conn.clone());
+        use device::DeviceWireless;
         use chrono::Duration;
         let last_scan = chrono::Utc::now() - Utc.timestamp(p.last_scan().await?, 0);
         if last_scan > Duration::seconds(10) {
-            p.request_scan().await?;
+            p.request_scan(HashMap::new()).await?;
         }
         Ok(())
     }
@@ -202,10 +188,10 @@ impl NetworkManager {
         {
             let p = nonblock::Proxy::new(NM_SETTINGS_INTERFACE, NM_SETTINGS_PATH, self.conn.clone());
             let connection_paths = {
-                use connections::OrgFreedesktopNetworkManagerSettings;
+                use connections::Settings;
                 p.connections().await?
             };
-            use connection_nm::OrgFreedesktopNetworkManagerSettingsConnection;
+            use connection_nm::Connection;
             for conn_path in connection_paths {
                 if let Some(settings) = get_connection_settings(self.conn.clone(), conn_path).await? {
                     if settings.mode == WifiConnectionMode::AP && settings.ssid == ssid {
@@ -219,7 +205,7 @@ impl NetworkManager {
         let settings =
             wifi_settings::make_arguments_for_sta(ssid, password, address, &self.interface_name)?;
 
-        let p = nonblock::Proxy::new(NM_INTERFACE, &self.wifi_device_path, self.conn.clone());
+        let p = nonblock::Proxy::new(NM_INTERFACE, NM_PATH, self.conn.clone());
 
         use networkmanager::NetworkManager;
         let (conn_path, active_connection) = p
@@ -245,19 +231,12 @@ impl NetworkManager {
         Ok(conn_path)
     }
 
-//    pub fn on_access_point_changes(&self) -> Result<dbus_tokio::SignalStream<access_point::OrgFreedesktopNetworkManagerAccessPointPropertiesChanged>, CaptivePortalError> {
-//        use dbus_tokio::SignalStream;
-//        use access_point::OrgFreedesktopNetworkManagerAccessPointPropertiesChanged as APChanged;
-//        let rule = APChanged::match_rule(Some(&NM_INTERFACE.to_owned().into()), None).static_clone();
-//        SignalStream::new(self.conn.clone(), rule)
-//    }
-
     /// Subscribe to access point added and removed bus signals.
     pub async fn on_access_point_list_changes(&self) -> Result<AccessPointChangeReturnType, CaptivePortalError> {
         /// This is implemented via stream merging, because each subscription is encapsulated in its own stream.
         use dbus_tokio::SignalStream;
-        use device::OrgFreedesktopNetworkManagerDeviceWirelessAccessPointAdded as APAdded;
-        use device::OrgFreedesktopNetworkManagerDeviceWirelessAccessPointRemoved as APRemoved;
+        use device::DeviceWirelessAccessPointAdded as APAdded;
+        use device::DeviceWirelessAccessPointRemoved as APRemoved;
         let rule_added = APAdded::match_rule(Some(&NM_INTERFACE.to_owned().into()), Some(&self.wifi_device_path.clone().into())).static_clone();
         let stream_added: SignalStream<APAdded, AccessPointChanged> =
             SignalStream::new(self.conn.clone(), rule_added,
@@ -273,7 +252,7 @@ impl NetworkManager {
             SignalStream::new(self.conn.clone(), rule_removed,
                               Box::new(|v: APRemoved| {
                                   AccessPointChanged {
-                                      event: NetworkManagerEvent::Added,
+                                      event: NetworkManagerEvent::Removed,
                                       path: v.access_point.to_string(),
                                   }
                               })).await?;
@@ -281,46 +260,67 @@ impl NetworkManager {
         Ok(r)
     }
 
+    /// Continuously print connection state changes
+    #[allow(dead_code)]
     pub async fn print_connection_changes(&self) -> Result<(), CaptivePortalError> {
         use dbus_tokio::SignalStream;
-        use connection_active::OrgFreedesktopNetworkManagerConnectionActiveStateChanged as ConnectionActiveChanged;
+        use connection_active::ConnectionActiveStateChanged as ConnectionActiveChanged;
 
         let rule = ConnectionActiveChanged::match_rule(None, None).static_clone();
         let stream: SignalStream<ConnectionActiveChanged, ConnectionActiveChanged> = SignalStream::new(self.conn.clone(), rule,
-                                                                                                           Box::new(|v| { v })).await?;
+                                                                                                       Box::new(|v| { v })).await?;
         pin_utils::pin_mut!(stream);
+        let mut stream = stream; // Idea IDE Workaround
 
         while let Some((value, path)) = stream.next().await {
-            println!("Connection state changed: {:?} {} on {}", ConnectionState::from(value.state), value.reason, path);
+            info!("Connection state changed: {:?} {} on {}", ConnectionState::from(value.state), value.reason, path);
         }
 
         Ok(())
     }
 
-    pub async fn wait_until_connection_lost(
+    pub async fn wait_until_state(
         &self,
+        expected_states: BitFlags<connectivity::NetworkManagerState>,
+        timeout: Option<std::time::Duration>,
+        negate_condition: bool,
     ) -> Result<connectivity::NetworkManagerState, CaptivePortalError> {
         use dbus_tokio::SignalStream;
         use networkmanager::NetworkManagerStateChanged as StateChanged;
 
-        // Not connected in the first place
         let state = self.state().await?;
-        if state != NetworkManagerState::ConnectedGlobal && state != NetworkManagerState::ConnectedLocal && state != NetworkManagerState::ConnectedSite {
-            info!("Not connected right now: {:?}", state);
+        if expected_states.contains(state) && !negate_condition {
             return Ok(state);
         }
 
         let rule = StateChanged::match_rule(None, None).static_clone();
         let stream: SignalStream<StateChanged, StateChanged> = SignalStream::new(self.conn.clone(), rule, Box::new(|v| { v })).await?;
         pin_utils::pin_mut!(stream);
+        let mut stream = stream; // Idea IDE Workaround
 
-        while let Some((value, path)) = stream.next().await {
-            let state = NetworkManagerState::from(value.state);
-            if state != NetworkManagerState::ConnectedGlobal && state != NetworkManagerState::ConnectedLocal && state != NetworkManagerState::ConnectedSite {
-                info!("Connection state changed: {:?}", state);
-                return Ok(state);
+        match timeout {
+            Some(timeout) => {
+                while let Some(state_change) = crate::utils::timed_future(stream.next(), timeout).await {
+                    if let Some((value, _path)) = state_change {
+                        let state = NetworkManagerState::from(value.state);
+                        if expected_states.contains(state) && !negate_condition {
+                            info!("Connection state changed: {:?}", state);
+                            return Ok(state);
+                        }
+                    }
+                }
+            }
+            None => {
+                while let Some((value, _path)) = stream.next().await {
+                    let state = NetworkManagerState::from(value.state);
+                    if expected_states.contains(state) && !negate_condition {
+                        info!("Connection state changed: {:?}", state);
+                        return Ok(state);
+                    }
+                }
             }
         }
+
 
         Ok(NetworkManagerState::Unknown)
     }
@@ -336,21 +336,22 @@ impl NetworkManager {
     ) -> Result<connectivity::ConnectionState, CaptivePortalError> {
         let p = nonblock::Proxy::new(NM_ACTIVE_INTERFACE, path, self.conn.clone());
 
-        use connection_active::OrgFreedesktopNetworkManagerConnectionActive;
+        use connection_active::ConnectionActive;
         let state: connectivity::ConnectionState = p.state().await?.into();
         if state == expected_state {
             return Ok(state);
         }
 
         use dbus_tokio::SignalStream;
-        use connection_active::OrgFreedesktopNetworkManagerConnectionActiveStateChanged as StateChanged;
+        use connection_active::ConnectionActiveStateChanged as StateChanged;
 
         let rule = StateChanged::match_rule(None, None).static_clone();
         let stream: SignalStream<StateChanged, u32> = SignalStream::new(self.conn.clone(), rule, Box::new(|v: StateChanged| { v.state })).await?;
         pin_utils::pin_mut!(stream);
+        let mut stream = stream; // Idea IDE Workaround
 
         while let Some(state_change) = crate::utils::timed_future(stream.next(), timeout).await {
-            if let Some((state, path)) = state_change {
+            if let Some((state, _path)) = state_change {
                 let state = connectivity::ConnectionState::from(state);
                 if state == expected_state {
                     return Ok(state);
@@ -378,22 +379,48 @@ impl NetworkManager {
 
     /// Disables all known wifi connections, set auto-connect to true and enable them again
     /// and let network manager try to auto-connect.
-    pub async fn try_auto_connect(&self, timeout: std::time::Duration) -> Result<Option<ActiveConnection>, CaptivePortalError> {
+    pub async fn try_auto_connect(&self, timeout: std::time::Duration) -> Result<bool, CaptivePortalError> {
+        {
+            use device::Device;
+            let p = nonblock::Proxy::new(NM_DEVICE_INTERFACE, &self.wifi_device_path, self.conn.clone());
+            p.set_autoconnect(true).await?
+        };
+
+        // Wait if currently in a temporary state
+        let state = self.wait_until_state(
+            *NETWORK_MANAGER_STATE_TEMP,
+            Some(timeout),
+            true,
+        ).await?;
+        // If connected -> all good
+        if NETWORK_MANAGER_STATE_CONNECTED.contains(state) {
+            return Ok(true);
+        }
+
+
         let connections = {
-            use connections::OrgFreedesktopNetworkManagerSettings;
-            let p = nonblock::Proxy::new(NM_INTERFACE, NM_SETTINGS_PATH, self.conn.clone());
+            use connections::Settings;
+            let p = nonblock::Proxy::new(NM_SETTINGS_INTERFACE, NM_SETTINGS_PATH, self.conn.clone());
             p.list_connections().await?
         };
+
         for connection_path in connections {
             let settings = wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone()).await?;
-            if let Some(settings) = settings {
+            if let Some(_settings) = settings {
                 let p = nonblock::Proxy::new(NM_INTERFACE, NM_PATH, self.conn.clone());
                 use networkmanager::NetworkManager;
                 p.activate_connection(connection_path, (&self.wifi_device_path).into(), "".into());
             }
         }
 
-        Ok(None)
+        // Wait until connected
+        let state = self.wait_until_state(
+            *NETWORK_MANAGER_STATE_CONNECTED,
+            Some(timeout),
+            false,
+        ).await?;
+
+        Ok(NETWORK_MANAGER_STATE_CONNECTED.contains(state))
     }
 
     /// Returns a tuple with network manager dbus paths on success: (connection, active_connection)
@@ -402,16 +429,16 @@ impl NetworkManager {
                                    hw: String,
                                    credentials: security::AccessPointCredentials, ) -> Result<Option<(dbus::Path<'_>, dbus::Path<'_>)>, CaptivePortalError> {
         let connections = {
-            use connections::OrgFreedesktopNetworkManagerSettings;
+            use connections::Settings;
             let p = nonblock::Proxy::new(NM_INTERFACE, NM_SETTINGS_PATH, self.conn.clone());
             p.list_connections().await?
         };
         for connection_path in connections {
-            let settings = wifi_settings::get_connection_settings(self.conn.clone(), connection_path).await?;
+            let settings = wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone()).await?;
             if let Some(settings) = settings {
                 // A matching connection could be found. Replace the settings with new ones and store to disk
                 if settings.seen_bssids.contains(&hw) {
-                    use connection_nm::OrgFreedesktopNetworkManagerSettingsConnection;
+                    use connection_nm::Connection;
                     let p = nonblock::Proxy::new(NM_INTERFACE, connection_path.clone(), self.conn.clone());
                     const SAVE_TO_DISK_FLAG: u32 = 0x01;
                     let settings = wifi_settings::make_arguments_for_ap::<&'static str>(ssid, credentials)?;
@@ -419,7 +446,7 @@ impl NetworkManager {
                     // Activate connection
                     let p = nonblock::Proxy::new(NM_INTERFACE, NM_PATH, self.conn.clone());
                     use networkmanager::NetworkManager;
-                    let active_path = p.activate_connection(connection_path.clone(), self.wifi_device_path.into(), "".into()).await?;
+                    let active_path = p.activate_connection(connection_path.clone(), self.wifi_device_path.clone().into(), "".into()).await?;
                     return Ok(Some((connection_path, active_path)));
                 }
             }
@@ -438,20 +465,20 @@ impl NetworkManager {
     ) -> Result<Option<ActiveConnection>, CaptivePortalError> {
         // try to find connection, update it, activate it and return the connection path
         let active_connection = if let Some(hw) = hw {
-            self.update_connection(ssid, hw, credentials).await?
+            self.update_connection(ssid.clone(), hw, credentials.clone()).await?
         } else {
             None
         };
 
         // If not found: Create and activate a new connection
         let (connection_path, active_connection) = if active_connection.is_none() {
-            let settings = wifi_settings::make_arguments_for_ap(ssid, credentials)?;
+            let settings = wifi_settings::make_arguments_for_ap(ssid.clone(), credentials)?;
             let options = wifi_settings::make_options_for_ap();
 
             // Create connection
             use networkmanager::NetworkManager;
             let p = nonblock::Proxy::new(NM_INTERFACE, NM_PATH, self.conn.clone());
-            let (conn_path, active_connection, _) = p.add_and_activate_connection2(settings, self.wifi_device_path.into(), "".into(), options).await?;
+            let (conn_path, active_connection, _) = p.add_and_activate_connection2(settings, self.wifi_device_path.clone().into(), "".into(), options).await?;
             (conn_path, active_connection)
         } else {
             active_connection.unwrap()
@@ -460,14 +487,14 @@ impl NetworkManager {
         // Wait until connected
         let state = self.wait_for_active_connection_state(
             connectivity::ConnectionState::Activated,
-            active_connection,
+            active_connection.clone(),
             Duration::from_secs(7),
         ).await?;
 
-        // Remove connection if not successful
+        // Remove connection if not successful. Store it permanently if successful
         if state == connectivity::ConnectionState::Activated {
-            use connection_nm::OrgFreedesktopNetworkManagerSettingsConnection;
-            let p = nonblock::Proxy::new(NM_INTERFACE, connection_path, self.conn.clone());
+            use connection_nm::Connection;
+            let p = nonblock::Proxy::new(NM_INTERFACE, connection_path.clone(), self.conn.clone());
             //  flags: optional flags argument.
             // Currently supported flags are: "0x1" (to-disk), "0x2" (in-memory), "0x4" (in-memory-detached),
             // "0x8" (in-memory-only), "0x10" (volatile), "0x20" (block-autoconnect), "0x40" (no-reapply).
@@ -480,7 +507,7 @@ impl NetworkManager {
                 state,
             }));
         } else {
-            use connection_nm::OrgFreedesktopNetworkManagerSettingsConnection;
+            use connection_nm::Connection;
             let p = nonblock::Proxy::new(NM_INTERFACE, connection_path, self.conn.clone());
             p.delete().await?;
             return Ok(None);
@@ -492,8 +519,8 @@ impl NetworkManager {
         let security = security::get_access_point_security(self.conn.clone(), &ap_path)
             .await?
             .as_str();
-        let access_point_data = nonblock::Proxy::new(NM_INTERFACE, ap_path, self.conn.clone());
-        use access_point::OrgFreedesktopNetworkManagerAccessPoint;
+        let access_point_data = nonblock::Proxy::new(NM_ACCESS_POINT_INTERFACE, ap_path, self.conn.clone());
+        use access_point::AccessPoint;
         let hw = access_point_data.hw_address().await?;
         let ssid = String::from_utf8(access_point_data.ssid().await?)?;
 
@@ -511,10 +538,10 @@ impl NetworkManager {
     /// Return all known access points of the associated wifi device.
     /// The list might not be up to date and can be refreshed with a call to [`scan_networks`].
     pub async fn list_access_points(&self) -> Result<Vec<WifiConnection>, CaptivePortalError> {
-        let p = nonblock::Proxy::new(NM_INTERFACE, &self.wifi_device_path, self.conn.clone());
+        let p = nonblock::Proxy::new(NM_WIRELESS_INTERFACE, &self.wifi_device_path, self.conn.clone());
 
         let access_point_paths = {
-            use device::OrgFreedesktopNetworkManagerDeviceWireless;
+            use device::DeviceWireless;
             p.get_all_access_points().await?
         };
 

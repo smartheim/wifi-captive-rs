@@ -125,31 +125,16 @@ impl error::Error for CaptivePortalError {
 }
 
 impl CaptivePortalError {
-    pub fn network_manager(info: String) -> Self {
-        CaptivePortalError::from(format!("network_manager failure: {}", info))
-    }
-    pub fn ssid(info: String) -> Self {
-        CaptivePortalError::from(format!("Invalid ssid: {}", info))
-    }
-    pub fn pre_shared_key(info: String) -> Self {
-        CaptivePortalError::from(format!("Invalid Pre-Shared-Key: {}", info))
+    pub fn invalid_shared_key(info: String) -> Self {
+        CaptivePortalError::from(format!("Invalid Passphrase: {}", info))
     }
     pub fn no_shared_key() -> Self {
         CaptivePortalError::Generic("Passphrase required!")
-    }
-    pub fn dbus_api(info: String) -> Self {
-        CaptivePortalError::from(format!("D-Bus failure: {}", info))
-    }
-    pub fn start_active_network_manager() -> Self {
-        CaptivePortalError::Generic("Failed to start the network manager!")
     }
     pub fn hotspot_failed() -> Self {
         CaptivePortalError::Generic("Failed to initiate a hotspot")
     }
     pub fn no_wifi_device() -> Self {
-        CaptivePortalError::Generic("no_wi_fi_device")
-    }
-    pub fn not_a_wifi_device(info: String) -> Self {
-        CaptivePortalError::from(format!("not_awi_fi_device: {}", info))
+        CaptivePortalError::Generic("No wifi device found on this system")
     }
 }

@@ -65,10 +65,13 @@ pub fn new<C: From<Channel>>(b: BusType) -> Result<(IOResource<C>, Arc<C>), Erro
     Ok((res, conn))
 }
 
+#[allow(dead_code)]
 pub fn new_session_local() -> Result<(IOResource<LocalConnection>, Arc<LocalConnection>), Error> { new(BusType::Session) }
 
+#[allow(dead_code)]
 pub fn new_system_local() -> Result<(IOResource<LocalConnection>, Arc<LocalConnection>), Error> { new(BusType::System) }
 
+#[allow(dead_code)]
 pub fn new_session_sync() -> Result<(IOResource<SyncConnection>, Arc<SyncConnection>), Error> { new(BusType::Session) }
 
 pub fn new_system_sync() -> Result<(IOResource<SyncConnection>, Arc<SyncConnection>), Error> { new(BusType::System) }

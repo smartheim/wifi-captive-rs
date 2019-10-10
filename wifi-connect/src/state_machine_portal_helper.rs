@@ -34,8 +34,9 @@ pub async fn start_portal(nm: &NetworkManager, config: &crate::config::Config) -
                 warn!("Error in access point watcher: {}", e);
                 return Err::<(), CaptivePortalError>(e);
             };
-            let mut changes_future = changes_future.unwrap();
+            let changes_future = changes_future.unwrap();
             pin_mut!(changes_future);
+            let mut changes_future = changes_future; // Idea IDE workaround
             loop {
                 let r = changes_future.next().await;
                 let (access_point_changed, _path) = r.unwrap();

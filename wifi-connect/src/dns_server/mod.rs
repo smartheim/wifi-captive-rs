@@ -1,5 +1,3 @@
-// https://github.com/EmilHernvall/dnsguide/blob/master/samples/sample4.rs
-
 mod byte_buffer;
 mod dns_header;
 mod dns_packet;

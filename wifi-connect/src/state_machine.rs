@@ -93,30 +93,14 @@ impl StateMachine {
                 })
             }
             StateMachine::TryReconnect(config, nm) => {
-                // Wait if currently in a temporary state
-                let state = loop {
-                    let state = nm.state().await?;
-                    if let NetworkManagerState::Disconnecting | NetworkManagerState::Connecting = state {
-                        tokio_timer::delay_for(Duration::from_millis(500)).await;
-                        continue;
-                    }
-                    break state;
-                };
-                // If connected -> all good
-                if let NetworkManagerState::ConnectedLocal | NetworkManagerState::ConnectedSite | NetworkManagerState::ConnectedGlobal = state {
-                    return Ok(Some(StateMachine::Connected(config, nm)));
-                }
-
                 // Try to connect to an existing connection
                 let r = ctrl_c_or_future(nm.try_auto_connect(Duration::from_secs(10))).await?;
                 match r {
                     // Ctrl+C
                     None => return Ok(Some(StateMachine::Exit(nm))),
                     Some(state) => {
-                        if let Some(state) = state {
-                            if state.state == ConnectionState::Activated {
-                                return Ok(Some(StateMachine::Connected(config, nm)));
-                            }
+                        if state {
+                            return Ok(Some(StateMachine::Connected(config, nm)));
                         }
                     }
                 }
@@ -124,8 +108,9 @@ impl StateMachine {
             }
             StateMachine::Connected(config, nm) => {
                 info!("Connected");
+                info!("Current connectivity: {:?}", nm.connectivity().await?);
 
-                let r = ctrl_c_or_future(nm.wait_until_connection_lost()).await?;
+                let r = ctrl_c_or_future(nm.wait_until_state(*crate::nm::NETWORK_MANAGER_STATE_NOT_CONNECTED, None, false)).await?;
                 match r {
                     // Ctrl+C
                     None => Ok(Some(StateMachine::Exit(nm))),
@@ -136,6 +121,8 @@ impl StateMachine {
                 info!("Activating portal");
 
                 use super::state_machine_portal_helper::start_portal;
+
+                nm.create_start_hotspot(config.ssid.clone(),config.passphrase.clone(),Some(config.gateway)).await?;
 
                 let r = ctrl_c_or_future(start_portal(&nm, &config)).await?;
                 match r {

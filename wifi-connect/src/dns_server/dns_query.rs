@@ -1,3 +1,5 @@
+//! A DNS Query and its encoding and decoding
+
 use std::io::Result;
 
 use super::byte_buffer::BytePacketBuffer;
@@ -49,8 +51,8 @@ impl QueryType {
 impl DnsQuery {
     pub fn new(name: String, qtype: QueryType) -> DnsQuery {
         DnsQuery {
-            name: name,
-            qtype: qtype,
+            name,
+            qtype,
         }
     }
 

@@ -1,13 +1,24 @@
-#[derive(Clone, Debug, PartialEq)]
+use enumflags2::BitFlags;
+use lazy_static::lazy_static;
+
+#[derive(BitFlags, Copy, Clone, Debug, PartialEq)]
+#[repr(u8)]
 pub enum NetworkManagerState {
-    Unknown,
-    Asleep,
-    Disconnected,
-    Disconnecting,
-    Connecting,
-    ConnectedLocal,
-    ConnectedSite,
-    ConnectedGlobal,
+    Unknown = 128,
+    Asleep = 1,
+    Disconnected = 2,
+    Disconnecting = 4,
+    Connecting = 8,
+    ConnectedLocal = 16,
+    ConnectedSite = 32,
+    ConnectedGlobal = 64,
+}
+
+// State types for convenience
+lazy_static! {
+pub static ref NETWORK_MANAGER_STATE_NOT_CONNECTED: BitFlags<NetworkManagerState> = NetworkManagerState::Unknown | NetworkManagerState::Asleep | NetworkManagerState::Disconnected;
+pub static ref NETWORK_MANAGER_STATE_CONNECTED: BitFlags<NetworkManagerState> = NetworkManagerState::ConnectedGlobal | NetworkManagerState::ConnectedLocal | NetworkManagerState::ConnectedSite;
+pub static ref NETWORK_MANAGER_STATE_TEMP: BitFlags<NetworkManagerState> = NetworkManagerState::Connecting | NetworkManagerState::Disconnecting;
 }
 
 impl From<u32> for NetworkManagerState {
@@ -24,18 +35,19 @@ impl From<u32> for NetworkManagerState {
             _ => {
                 warn!("Undefined Network Manager state: {}", state);
                 NetworkManagerState::Unknown
-            },
+            }
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(BitFlags, Copy, Clone, Debug, PartialEq)]
+#[repr(u8)]
 pub enum Connectivity {
-    Unknown,
-    None,
-    Portal,
-    Limited,
-    Full,
+    Unknown = 128,
+    None = 1,
+    Portal = 2,
+    Limited = 4,
+    Full = 8,
 }
 
 impl From<u32> for Connectivity {
@@ -49,18 +61,18 @@ impl From<u32> for Connectivity {
             _ => {
                 warn!("Undefined connectivity state: {}", state);
                 Connectivity::Unknown
-            },
+            }
         }
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ConnectionState {
-    Unknown = 0,
-    Activating = 1,
-    Activated = 2,
-    Deactivating = 3,
-    Deactivated = 4,
+    Unknown,
+    Activating,
+    Activated,
+    Deactivating,
+    Deactivated,
 }
 
 impl From<u32> for ConnectionState {
@@ -74,13 +86,13 @@ impl From<u32> for ConnectionState {
             _ => {
                 warn!("Undefined connection state: {}", state);
                 ConnectionState::Unknown
-            },
+            }
         }
     }
 }
 
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum DeviceState {
     Unknown,
     Unmanaged,
@@ -116,16 +128,16 @@ impl From<i64> for DeviceState {
             _ => {
                 warn!("Undefined device state: {}", state);
                 DeviceState::Unknown
-            },
+            }
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum DeviceType {
-    Unknown,
-    Ethernet,
-    WiFi,
+    Unknown=0,
+    Ethernet=1,
+    WiFi=2,
     Unused1,
     Unused2,
     Bt,
@@ -177,7 +189,7 @@ impl From<i64> for DeviceType {
             _ => {
                 warn!("Undefined device type: {}", device_type);
                 DeviceType::Unknown
-            },
+            }
         }
     }
 }

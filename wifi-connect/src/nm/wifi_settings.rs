@@ -99,7 +99,8 @@ pub(crate) fn make_arguments_for_ap<T: Eq + std::hash::Hash + std::convert::From
     settings.insert("802-11-wireless".into(), wireless);
 
     let mut connection: VariantMap = HashMap::new();
-    add_str(&mut connection, "auto-connect", "true");
+    // See https://developer.gnome.org/NetworkManager/stable/nm-settings.html
+    add_val(&mut connection, "autoconnect", true);
     settings.insert("connection".into(), connection);
 
     prepare_wifi_security_settings(&credentials, &mut settings)?;
@@ -174,7 +175,7 @@ pub async fn get_connection_settings(
     connection_path: dbus::Path<'_>,
 ) -> Result<Option<WiFiConnectionSettings>, CaptivePortalError> {
     let p = nonblock::Proxy::new(NM_CONNECTION_INTERFACE, connection_path, conn.clone());
-    use super::generated::connection_nm::OrgFreedesktopNetworkManagerSettingsConnection;
+    use super::generated::connection_nm::Connection;
 
     let dict = p.get_settings().await?;
 

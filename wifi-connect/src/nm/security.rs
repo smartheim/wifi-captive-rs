@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use crate::CaptivePortalError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AccessPointCredentials {
     None,
     Wep {
@@ -111,7 +111,7 @@ pub async fn get_access_point_security(
     ap_path: &dbus::Path<'_>,
 ) -> Result<Security, super::CaptivePortalError> {
     let access_point_data = nonblock::Proxy::new(NM_INTERFACE, ap_path, conn.clone());
-    use super::access_point::OrgFreedesktopNetworkManagerAccessPoint;
+    use super::access_point::AccessPoint;
     let flags = NM80211ApFlags::from_bits(access_point_data.flags().await?)
         .unwrap_or(NM80211ApFlags::AP_FLAGS_NONE);
     let wpa_flags = NM80211ApSecurityFlags::from_bits(access_point_data.wpa_flags().await?)

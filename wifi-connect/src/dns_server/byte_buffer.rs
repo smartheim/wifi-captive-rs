@@ -1,3 +1,9 @@
+//! A byte buffer that deals with big/little endianess for us.
+//!
+//! The buffer is developer with safely in mind, not efficiency.
+//! Each read checks towards the actual buffer size.
+// https://github.com/EmilHernvall/dnsguide/blob/master/samples/sample4.rs
+
 use std::io::Result;
 use std::io::{Error, ErrorKind};
 
@@ -93,11 +99,11 @@ impl BytePacketBuffer {
             let len = self.get(pos)?;
 
             // A two byte sequence, where the two highest bits of the first byte is
-            // set, represents nm_dbus_generated offset relative to the start of the buffer. We
-            // handle this by jumping to the offset, setting nm_dbus_generated flag to indicate
+            // set, represents a offset relative to the start of the buffer. We
+            // handle this by jumping to the offset, setting a flag to indicate
             // that we shouldn't update the shared buffer position once done.
             if (len & 0xC0) == 0xC0 {
-                // When nm_dbus_generated jump is performed, we only modify the shared buffer
+                // When a jump is performed, we only modify the shared buffer
                 // position once, and avoid making the change later on.
                 if !jumped {
                     self.seek(pos + 2)?;

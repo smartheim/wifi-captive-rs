@@ -44,6 +44,8 @@ mime_guess = "2.0.1"
 include_dir = "0.2.1"
 chrono = "0.4.9"
 mio = "0.6.19"
+enumflags2 = "0.6.0"
+lazy_static = "1.4.0"
 
 [patch.crates-io]
 #dbus = { git = 'https://github.com/diwic/dbus-rs' }
