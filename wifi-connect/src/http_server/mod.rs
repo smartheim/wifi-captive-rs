@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::nm::{NetworkManagerEvent, WifiConnections, WifiConnectionEvent};
 use std::time::Duration;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub(crate) mod sse;
 mod file_serve;
@@ -47,7 +47,7 @@ pub struct HttpServerState {
     pub network_manager: crate::nm::NetworkManager,
 }
 
-type HttpServerStateSync = Arc<Mutex<HttpServerState>>;
+pub type HttpServerStateSync = Arc<Mutex<HttpServerState>>;
 
 pub async fn user_requests_wifi_list_refresh(state: HttpServerStateSync) -> StatusCode {
     let nm = state.lock().unwrap().network_manager.clone();

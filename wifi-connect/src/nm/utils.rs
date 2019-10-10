@@ -26,7 +26,7 @@ pub async fn find_wifi_device(
     let p = nonblock::Proxy::new(NM_INTERFACE, NM_PATH, connection.clone());
 
     // Get all devices (if possible: by interface)
-    use networkmanager::OrgFreedesktopNetworkManager;
+    use networkmanager::NetworkManager;
     if let Some(interface_name) = preferred_interface {
         let device_path = p.get_device_by_ip_iface(&interface_name).await?;
         let device_data = nonblock::Proxy::new(NM_INTERFACE, &device_path, connection.clone());

@@ -1,7 +1,3 @@
-pub mod ssid;
-mod state;
-mod wifi_settings;
-
 pub use ssid::*;
 pub use state::*;
 pub use wifi_settings::*;
@@ -140,48 +136,6 @@ impl Connection {
         } else {
             Ok(vec![])
         }
-    }
-}
-
-impl Ord for Connection {
-    fn cmp(&self, other: &Self) -> ::std::cmp::Ordering {
-        i32::from(self).cmp(&i32::from(other))
-    }
-}
-
-impl PartialOrd for Connection {
-    fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for Connection {
-    fn eq(&self, other: &Connection) -> bool {
-        i32::from(self) == i32::from(other)
-    }
-}
-
-impl Eq for Connection {}
-
-impl fmt::Debug for Connection {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Connection {{ path: {:?}, settings: {:?} }}",
-            self.path, self.settings
-        )
-    }
-}
-
-impl<'a> From<&'a Connection> for i32 {
-    fn from(val: &Connection) -> i32 {
-        val.clone()
-            .path
-            .rsplit('/')
-            .nth(0)
-            .unwrap()
-            .parse::<i32>()
-            .unwrap()
     }
 }
 
@@ -530,58 +484,5 @@ pub fn wait_for_connection(
             "Still waiting for connection state ({:?}): {:?} / {}s elapsed",
             target_state, state, total_time
         );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::NetworkManager;
-    use super::*;
-
-    #[test]
-    fn test_connection_enable_disable() {
-        let manager = NetworkManager::new();
-
-        let connections = list_connections(&manager).unwrap();
-
-        // set environment variable $TEST_WIFI_SSID with the wifi's ssid that you want to test
-        // e.g.  export TEST_WIFI_SSID="Resin.io Wifi"
-        let wifi_env_var = "TEST_WIFI_SSID";
-        let connection = match ::std::env::var(wifi_env_var) {
-            Ok(ssid) => connections
-                .iter()
-                .filter(|c| c.settings.ssid.to_string().unwrap() == ssid)
-                .nth(0)
-                .unwrap()
-                .clone(),
-            Err(e) => panic!(
-                "couldn't retrieve environment variable {}: {}",
-                wifi_env_var, e
-            ),
-        };
-
-        let state = connection.get_state().unwrap();
-
-        if state == ConnectionState::Activated {
-            let state = connection.deactivate().unwrap();
-            assert_eq!(ConnectionState::Deactivated, state);
-
-            ::std::thread::sleep(::std::time::Duration::from_secs(5));
-
-            let state = connection.activate().unwrap();
-            assert_eq!(ConnectionState::Activated, state);
-
-            ::std::thread::sleep(::std::time::Duration::from_secs(5));
-        } else {
-            let state = connection.activate().unwrap();
-            assert_eq!(ConnectionState::Activated, state);
-
-            ::std::thread::sleep(::std::time::Duration::from_secs(5));
-
-            let state = connection.deactivate().unwrap();
-            assert_eq!(ConnectionState::Deactivated, state);
-
-            ::std::thread::sleep(::std::time::Duration::from_secs(5));
-        }
     }
 }

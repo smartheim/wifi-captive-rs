@@ -190,6 +190,13 @@ get_networks()
         });
         // Display an error message if connection lost
         evtSource.onerror = connection_lost;
+
+        window.addEventListener('offline', () => {
+            document.getElementById("content-offline").classList.remove("hide");
+        });
+        window.addEventListener('online', function (e) {
+            document.getElementById("content-offline").classList.add("hide");
+        });
     })
     .catch(e => console.error("Failed to fetch", e));
 

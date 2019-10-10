@@ -1,13 +1,11 @@
 use super::config::Config;
 
 use crate::http_server::WifiConnectionRequest;
-use crate::nm::{NetworkManager, NetworkManagerState};
+use crate::nm::{NetworkManager, NetworkManagerState, ConnectionState};
 use crate::CaptivePortalError;
 use log::info;
 use std::time::Duration;
-use tokio_net::signal;
-use futures_util::StreamExt;
-use futures_util::future::Either;
+use crate::utils::ctrl_c_or_future;
 
 
 /// The programs state machine. Each state carries its required data, no side-effects.
@@ -31,6 +29,7 @@ pub enum StateMachine {
     /// # Transitions:
     /// **Connected** -> If network manager transitioned into a connected state.
     /// **ActivatePortal** -> If no connection can be established
+    /// **Exit** ->  On ctrl+c
     ///
     /// # Errors:
     /// Fails if network manager permissions do not allow to issue wifi scans or connect to
@@ -86,7 +85,6 @@ impl StateMachine {
                         Some(StateMachine::ActivatePortal(config, nm))
                     }
                     NetworkManagerState::Disconnecting | NetworkManagerState::Connecting => {
-                        tokio_timer::delay_for(Duration::from_millis(500)).await;
                         Some(StateMachine::TryReconnect(config, nm))
                     }
                     NetworkManagerState::ConnectedLocal | NetworkManagerState::ConnectedSite | NetworkManagerState::ConnectedGlobal => {
@@ -95,12 +93,39 @@ impl StateMachine {
                 })
             }
             StateMachine::TryReconnect(config, nm) => {
-                Ok(Some(StateMachine::ActivatePortal(config, nm)))
+                // Wait if currently in a temporary state
+                let state = loop {
+                    let state = nm.state().await?;
+                    if let NetworkManagerState::Disconnecting | NetworkManagerState::Connecting = state {
+                        tokio_timer::delay_for(Duration::from_millis(500)).await;
+                        continue;
+                    }
+                    break state;
+                };
+                // If connected -> all good
+                if let NetworkManagerState::ConnectedLocal | NetworkManagerState::ConnectedSite | NetworkManagerState::ConnectedGlobal = state {
+                    return Ok(Some(StateMachine::Connected(config, nm)));
+                }
+
+                // Try to connect to an existing connection
+                let r = ctrl_c_or_future(nm.try_auto_connect(Duration::from_secs(10))).await?;
+                match r {
+                    // Ctrl+C
+                    None => return Ok(Some(StateMachine::Exit(nm))),
+                    Some(state) => {
+                        if let Some(state) = state {
+                            if state.state == ConnectionState::Activated {
+                                return Ok(Some(StateMachine::Connected(config, nm)));
+                            }
+                        }
+                    }
+                }
+                return Ok(Some(StateMachine::ActivatePortal(config, nm)));
             }
             StateMachine::Connected(config, nm) => {
                 info!("Connected");
 
-                let r = ctrl_c_or_future(nm.print_connection_changes()).await?;
+                let r = ctrl_c_or_future(nm.wait_until_connection_lost()).await?;
                 match r {
                     // Ctrl+C
                     None => Ok(Some(StateMachine::Exit(nm))),
@@ -110,7 +135,9 @@ impl StateMachine {
             StateMachine::ActivatePortal(config, nm) => {
                 info!("Activating portal");
 
-                let r = ctrl_c_or_future(super::state_machine_portal_helper::start_portal(&nm, &config)).await?;
+                use super::state_machine_portal_helper::start_portal;
+
+                let r = ctrl_c_or_future(start_portal(&nm, &config)).await?;
                 match r {
                     // Ctrl+C
                     None => Ok(Some(StateMachine::Exit(nm))),
@@ -125,14 +152,14 @@ impl StateMachine {
             StateMachine::Connect(config, nm, network) => {
                 info!("Connecting ...");
 
-                let state = nm.connect_to(network.ssid, network.hw, crate::nm::credentials_from_data(network.passphrase, network.identity, network.mode)?).await?;
-                match state {
-                    crate::nm::ConnectionState::Activated => {
-                        Ok(Some(StateMachine::Connected(config, nm)))
+                let connection = nm.connect_to(network.ssid, network.hw, crate::nm::credentials_from_data(network.passphrase, network.identity, network.mode)?).await?;
+                if let Some(connection) = connection {
+                    match connection.state {
+                        ConnectionState::Activated => Ok(Some(StateMachine::Connected(config, nm))),
+                        _ => Ok(Some(StateMachine::ActivatePortal(config, nm)))
                     }
-                    _ => {
-                        Ok(Some(StateMachine::ActivatePortal(config, nm)))
-                    }
+                } else {
+                    Ok(Some(StateMachine::ActivatePortal(config, nm)))
                 }
             }
             StateMachine::Exit(nm) => {
@@ -142,38 +169,4 @@ impl StateMachine {
             }
         }
     }
-}
-
-async fn ctrl_c_or_future<F, R>(connect_future: F) -> Result<Option<R>, CaptivePortalError>
-    where F: std::future::Future<Output=Result<R, CaptivePortalError>>,
-          R: Sized {
-    use futures_util::try_future::try_select;
-
-    let ctrl_c = async move {
-        match signal::ctrl_c() {
-            Ok(mut v) => {
-                v.next().await;
-                Ok(())
-            }
-            Err(e) => Err(CaptivePortalError::Generic("signal::ctrl_c() failed"))
-        }
-    };
-    pin_utils::pin_mut!(ctrl_c);
-    pin_utils::pin_mut!(connect_future);
-
-    let r = try_select(connect_future, ctrl_c).await;
-    match r {
-        Err(e) => {
-            if let Either::Left((e, _)) = e {
-                return Err(e);
-            }
-        }
-        Ok(v) => {
-            if let Either::Left((v, _)) = v {
-                return Ok(Some(v));
-            }
-        }
-    }
-
-    Ok(None)
 }

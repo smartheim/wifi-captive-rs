@@ -12,7 +12,6 @@ use std::pin::Pin;
 use dbus::message::{SignalArgs, MatchRule};
 use std::collections::VecDeque;
 use std::task::Waker;
-use std::marker::PhantomData;
 use tokio::stream::Stream;
 
 /// The I/O Resource should be spawned onto a Tokio compatible reactor.
@@ -74,30 +73,30 @@ pub fn new_session_sync() -> Result<(IOResource<SyncConnection>, Arc<SyncConnect
 
 pub fn new_system_sync() -> Result<(IOResource<SyncConnection>, Arc<SyncConnection>), Error> { new(BusType::System) }
 
-#[derive(Default)]
-struct SignalStreamState {
+struct SignalStreamState<U, T> {
     signal_queue: VecDeque<dbus::Message>,
     waker: Option<Waker>,
     done: bool,
+    mapper: Box<dyn Fn(U) -> T+ Send+ 'static>,
 }
 
 
-pub struct SignalStream<T> {
+pub struct SignalStream<U, T> {
     connection: Arc<SyncConnection>,
     match_str: String,
     rule_handler: u32,
-    state: Arc<Mutex<SignalStreamState>>,
-    _data: PhantomData<T>,
+    state: Arc<Mutex<SignalStreamState<U, T>>>,
 }
 
-impl<T: SignalArgs + 'static> Stream for SignalStream<T>
-    where T: dbus::arg::ReadAll {
+impl<U: SignalArgs + 'static, T: Sized+ 'static> Stream for SignalStream<U, T>
+    where U: dbus::arg::ReadAll {
     type Item = (T, String);
     fn poll_next(self: Pin<&mut Self>, ctx: &mut task::Context) -> task::Poll<Option<Self::Item>> {
         let mut state = self.state.lock().unwrap();
 
         if let Some(message) = state.signal_queue.pop_back() {
-            let v = T::from_message(&message).unwrap();
+            let v = U::from_message(&message).unwrap();
+            let v = (state.mapper)(v);
             return task::Poll::Ready(Some((v, message.path().and_then(|f| Some(f.to_string())).unwrap_or_default())));
         }
         if state.done {
@@ -108,15 +107,16 @@ impl<T: SignalArgs + 'static> Stream for SignalStream<T>
     }
 }
 
-impl<T: SignalArgs + 'static> SignalStream<T> {
-    pub async fn new(connection: Arc<SyncConnection>, mr: MatchRule<'static>) -> Result<Self, Error> {
+impl<U: SignalArgs + 'static, T: Sized+ 'static> SignalStream<U, T> {
+    pub async fn new(connection: Arc<SyncConnection>, mr: MatchRule<'static>,
+                     mapper: Box<dyn Fn(U) -> T + Send + 'static>) -> Result<Self, Error> {
         let match_str = mr.match_str();
 
         let p = dbus::nonblock::Proxy::new("org.freedesktop.DBus", "/", connection.clone());
         use dbus::nonblock::stdintf::org_freedesktop_dbus::DBus;
         p.add_match(&match_str).await?;
 
-        let state = Arc::new(Mutex::new(SignalStreamState { ..Default::default() }));
+        let state = Arc::new(Mutex::new(SignalStreamState { signal_queue: Default::default(), waker: None, done: false, mapper }));
         let state_clone = state.clone();
         let rule_handler = connection.start_receive(
             mr,
@@ -130,13 +130,13 @@ impl<T: SignalArgs + 'static> SignalStream<T> {
             }),
         );
 
-        Ok(SignalStream { connection, match_str, rule_handler, state, _data: Default::default() })
+        Ok(SignalStream { connection, match_str, rule_handler, state })
     }
 }
 
 /// Remove the receive dispatcher rule and then ask the dbus daemon to no longer send us messages
 /// of this match_rule.
-impl<T> Drop for SignalStream<T> {
+impl<U, T> Drop for SignalStream<U, T> {
     fn drop(&mut self) {
         self.connection.stop_receive(self.rule_handler);
         self.rule_handler = 0;
