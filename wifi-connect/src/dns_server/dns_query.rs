@@ -50,10 +50,7 @@ impl QueryType {
 
 impl DnsQuery {
     pub fn new(name: String, qtype: QueryType) -> DnsQuery {
-        DnsQuery {
-            name,
-            qtype,
-        }
+        DnsQuery { name, qtype }
     }
 
     pub fn read(&mut self, buffer: &mut BytePacketBuffer) -> Result<()> {

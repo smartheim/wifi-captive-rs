@@ -51,17 +51,13 @@ pub fn send_wifi_connection(
 /// clients on the given channel, if any.
 ///
 /// Returns an error if the serialization fails.
-fn push_to_all_clients(
-    clients: &mut Clients,
-    chunk: String,
-) {
-
+fn push_to_all_clients(clients: &mut Clients, chunk: String) {
     // Clean up non reachable clients
     let drained = clients.drain_filter(|client| {
         let result = client.tx.try_send_data(Chunk::from(chunk.clone()));
         match result {
             Err(_) => true,
-            _ => false
+            _ => false,
         }
     });
     for client in drained {
@@ -73,10 +69,7 @@ fn push_to_all_clients(
 /// Initiate a new SSE stream for the given request and request IP.
 /// Each IP can only have one stream. If there is already an existing one,
 /// the old one will be closed and overwritten.
-pub fn create_stream(
-    clients: &mut Clients,
-    src: IpAddr,
-) -> Response<Body> {
+pub fn create_stream(clients: &mut Clients, src: IpAddr) -> Response<Body> {
     let (sender, body) = Body::channel();
 
     let drained = clients.drain_filter(|client| client.dest == src);

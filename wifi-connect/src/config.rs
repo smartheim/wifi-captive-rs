@@ -1,3 +1,5 @@
+//! The command line configuration is defined in this module.
+
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -52,7 +54,8 @@ pub struct Config {
     pub dhcp_port: u16,
 
     /// Time in seconds before the portal is opened for re-configuration, if no connection can be established.
-    #[structopt(short, long, default_value = "20", env = "WAIT_BEFORE_RECONFIGURE")]
+    /// During this time, the application is listening to network manager connection state changes.
+    #[structopt(short, long, default_value = "10", env = "WAIT_BEFORE_RECONFIGURE")]
     pub wait_before_reconfigure: u64,
 
     /// Time in seconds before retrying to connect to a configured WiFi SSID.
@@ -63,9 +66,14 @@ pub struct Config {
     #[structopt(short, long, default_value = "360", env = "RETRY_IN")]
     pub retry_in: u64,
 
-    // Exit after a connection has been established.
+    /// Exit after a connection has been established.
     #[structopt(short, long)]
     pub quit_after_connected: bool,
+
+    /// Require internet connectivity to deem a connection successful.
+    /// Usually it is sufficient if a connection to the local network can be established.
+    #[structopt(long)]
+    pub internet_connectivity: bool,
 
     /// The directory where the html files reside.
     #[structopt(

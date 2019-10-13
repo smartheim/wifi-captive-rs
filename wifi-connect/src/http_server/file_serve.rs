@@ -1,8 +1,11 @@
-use hyper::header::HeaderValue;
-use hyper::{Request, Body, Response, StatusCode};
-use std::path::{PathBuf, Path};
+//! Serves the static ui files. If the "includeui" feature is set, the ui files are compiled in
+//! and no system file access is required.
+
 use super::CaptivePortalError;
 use crate::http_server::HttpServerStateSync;
+use hyper::header::HeaderValue;
+use hyper::{Body, Request, Response, StatusCode};
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "includeui")]
 /// A reference to all binary embedded ui files
@@ -57,8 +60,12 @@ impl<'a> FileWrapper {
     }
 }
 
-pub fn serve_file(root: &Path, mut response: Response<Body>, req: &Request<Body>, state: &HttpServerStateSync)
-                  -> Result<Response<Body>, CaptivePortalError> {
+pub fn serve_file(
+    root: &Path,
+    mut response: Response<Body>,
+    req: &Request<Body>,
+    state: &HttpServerStateSync,
+) -> Result<Response<Body>, CaptivePortalError> {
     let path = &req.uri().path()[1..];
 
     let file = match () {
@@ -72,18 +79,21 @@ pub fn serve_file(root: &Path, mut response: Response<Body>, req: &Request<Body>
     // A captive portal catches all GET requests (that accept */* or text) and redirects to the main page.
     if file.is_none() {
         if let Some(v) = req.headers().get("Accept") {
-            let accept = v.to_str().unwrap();
+            let accept = v.to_str()?;
             if accept.contains("text") || accept.contains("*/*") {
-                let state = state.lock().unwrap();
+                let state = state.lock().expect("Lock http_state mutex");
                 let redirect_loc = format!(
                     "http://{}:{}/index.html",
                     state.server_addr.ip().to_string(),
                     state.server_addr.port()
                 );
+                drop(state); // release mutex
                 *response.status_mut() = StatusCode::FOUND;
-                response
-                    .headers_mut()
-                    .append("Location", HeaderValue::from_str(&redirect_loc).unwrap());
+                response.headers_mut().append(
+                    "Location",
+                    HeaderValue::from_str(&redirect_loc)
+                        .expect("Headervalue from generated string"),
+                );
                 return Ok(response);
             }
         }
@@ -92,16 +102,21 @@ pub fn serve_file(root: &Path, mut response: Response<Body>, req: &Request<Body>
     // Serve UI
     if let Some(file) = file {
         let mime = match file.path().extension() {
-            Some(ext) => match mime_guess::from_ext(ext.to_str().unwrap()).first() {
-                Some(v) => v.to_string(),
-                None => "application/octet-stream".to_owned(),
+            Some(ext) => {
+                match mime_guess::from_ext(ext.to_str().expect("file path extension OsStr->str"))
+                    .first()
+                {
+                    Some(v) => v.to_string(),
+                    None => "application/octet-stream".to_owned(),
+                }
             },
             None => "application/octet-stream".to_owned(),
         };
         info!("Serve {} for {}", mime, path);
-        response
-            .headers_mut()
-            .append("Content-Type", HeaderValue::from_str(&mime).unwrap());
+        response.headers_mut().append(
+            "Content-Type",
+            HeaderValue::from_str(&mime).expect("mime to header value"),
+        );
         *response.body_mut() = file.contents();
         return Ok(response);
     }

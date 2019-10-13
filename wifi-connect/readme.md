@@ -2,25 +2,40 @@
 
 > WiFi service for Linux devices that opens an access point with a captive portal for easy network configuration from your mobile phone or laptop
 
+**Release note: This crate is not yet on crates.io. It relies on a few async/await modifications to
+the dbus crate. As soon as those are upstream a release is made.**
+
 WiFi Connect is a utility for dynamically setting the WiFi configuration on a Linux device via a captive portal.
 WiFi credentials are specified by connecting with a mobile phone or laptop to the access point that WiFi Connect creates.
 The access point includes a simple DHCP server for assigning clients IP addresses
 and a DNS server for routing all pages to the captive portal. 
 
-![How it works](./docs/images/how-it-works.png?raw=true)
+## Table of Contents
+
+1. [Requirements and command line arguments](#requirements-and-command-line-arguments)
+1. [How it works](#how-it-works)
+    1. [Advertise: Device Creates Access Point](#1.-device-creates-access-point)
+    1. [Connect: User Connects Phone to Device Access Point](#2.-user-connects-phone-to-device-access-point)
+    1. [Portal: Phone Shows Captive Portal to User](#3.-phone-shows-captive-portal-to-user)
+    1. [Credentials: User Enters Local WiFi Network Credentials on Phone](#4.-user-enters-local-wifi-network-credentials-on-phone)
+    1. [Connected: Device Connects to Local WiFi Network](#5.-device-connects-to-local-wifi-network)
+    1. [Connection Lost](#6.-connection-lost)
+1. [Not supported boards / dongles](#not-supported-boards-/-dongles)
+1. [Development, Get Involved](#development,-get-involved)
+    1. [System ports](#system-ports)
+    1. [Maintenance and future development](#maintenance-and-future-development)
+1. [Acknowledgements](#acknowledgements)
+    1. [Similar projects](#similar-projects)
+1. [FAQ](#faq)
 
 ## Requirements and command line arguments
 
-You need to either run the application as root or set the NET_BINDSERVICE capability like so:
-`sudo setcap CAP_NET_BIND_SERVICE=+eip /path/to/binary`.
-This is necessary to bind to a few "system" ports:
-* port 80 for the webserver,
-* port 67/68 for DHCP and
-* port 53 for the dns server.
+Compile with `cargo build`. You need at least rust 1.39 or rust nightly after 2019.09.
 
 Print available command line parameters with `./wifi-captive --help`.
-Command line options have environment variable counterpart.
-If both a command line option and its environment variable counterpart are defined, the command line option will take higher precedence.
+Command line options have environment variable counterparts.
+If both a command line option and its environment variable counterpart is defined,
+the command line option will take higher precedence.
 
 *   **-d, --portal-dhcp-range** dhcp_range, **$PORTAL_DHCP_RANGE**
 
@@ -79,35 +94,42 @@ If both a command line option and its environment variable counterpart are defin
 
     Default: _false_
 
+*   **--internet-connectivity**
+
+    Require internet connectivity to deem a connection successful.
+    Usually it is sufficient if a connection to the local network can be established.
+
+    Default: _false_
+
 ## How it works
 
 WiFi Connect interacts via DBUS with network_manager, which must be the active network manager on the device's host OS.
 
-### 1. Advertise: Device Creates Access Point
+### 1. Device Creates Access Point
 
 **Only if** no ethernet connection can be found **and** no wifi connection is configured so far:
 
-WiFi Connect detects available WiFi networks and opens an access point with a captive portal.
-Connecting to this access point with a mobile phone or laptop allows new WiFi credentials to be configured.
+The application detects available WiFi networks and opens an access point with a captive portal.
 
-### 2. Connect: User Connects Phone to Device Access Point
+### 2. User Connects Phone to Device Access Point
 
 Connect to the opened access point on the device from your mobile phone or laptop.
 The access point ssid is, by default, `WiFi Connect` with no password.
 
-### 3. Portal: Phone Shows Captive Portal to User
+### 3. Phone Shows Captive Portal to User
 
 After connecting to the access point from a mobile phone, it will detect the captive portal and open its web page.
 Opening any web page will redirect to the captive portal as well.
 
-### 4. Credentials: User Enters Local WiFi Network Credentials on Phone
+### 4. User Enters Local WiFi Network Credentials
 
 The captive portal provides the option to select a WiFi ssid from a list with detected WiFi networks or to enter
 a ssid. If necessary a passphrase must be entered for the desired network.
 
-### 5. Connected!: Device Connects to Local WiFi Network
+### 5. Device Connects to Local WiFi Network
 
-When the network credentials have been entered, WiFi Connect will disable the access point and try to connect to the network.
+When the network credentials have been entered,
+the service will disable the access point and try to connect to the network.
 If the connection fails, it will enable the access point for another attempt.
 If it succeeds, the configuration will be saved by network_manager.
 
@@ -127,15 +149,76 @@ The following dongles are known **not** to work with network_manager:
 
 Dongles with similar chipsets will probably not work.
 
-## Similar projects
+## Development, Get Involved
 
-There is also Wifi-Connect from <a href="https://balena.io">balena.io</a>.
-It is based on the old futures 0.1 dependency and uses Iron as http server framework
-and is not designed as long running background service, but quits after a connection
-is established.
-It forces the user to be root (UID=0) and uses `dnsmasq` for dns and dhcp-ip provisioning. 
+PRs are welcome. A PR is expected to be under the same license as the crate itself.
+This crate is using rusts async / await support (since Rust 1.38).
+Tokio 0.2 and futures 0.3 are used. A futures 0.1 compat dependency will not
+make a good PR candidate ;)
+
+There is not yet a full integration test. IMO a good one would fake network manager
+responses which requires a dbus service. The dbus crate is currently (as of Oct 2019)
+restructuring how dbus services are written.  
+
+### System ports
+
+The default ports as mentioned above are:
+
+* port 80 for the webserver,
+* port 67/68 for DHCP and
+* port 53 for the dns server.
+
+Those ports are considered "system" ports and require elevated permissions.
+You need to either run the application as root or set the NET_BINDSERVICE capability like so:
+`sudo setcap CAP_NET_BIND_SERVICE=+eip /path/to/binary`.
+
+Because this is tedious during development, you can use the helper program *set_net_cap* in `scripts`.
+Use it like this: `./scripts/set_net_cap target/debug/wifi-captive`. Just add it as a last build step to your development environment.
+
+It makes use of the fact that a setuid program doesn't require you to enter a password.
+To compile the C program, change the ownership to the root user and set the setuid bit,
+do this:
+
+```shell
+gcc -o scripts/set_net_cap scripts/set_net_cap.c && \
+sudo chown root:root scripts/set_net_cap && \
+sudo chmod +s scripts/set_net_cap
+``` 
+
+### Maintenance and future development
+
+The application is considered almost finished. It will be adapted to newer
+dependency and rust versions. 
+
+"Almost", because one goal is, to statically compile the binary.
+This is not yet possible due to the dbus crate using the libdbus C-library.
 
 ## Acknowledgements
 
 * DHCP: Inspired by https://github.com/krolaw/dhcp4r (Richard Warburton).
+  The implemented version in this crate is rewritten with only the packet struct being similar. 
 * DNS: Inspired by https://github.com/EmilHernvall/dnsguide/blob/master/samples/sample4.rs (Emil Hernvall). 
+  The implemented version in this crate is rewritten. The Query, Record, Header and Packet
+  data structures are similar. 
+
+### Similar projects
+
+There is also Wifi-Connect from <a href="https://balena.io">balena.io</a>.
+It is based on futures 0.1 and uses Iron as http server framework.
+It is not designed as long running background service, but quits after a connection
+has been established.
+It forces the user to be root (UID=0) and uses `dnsmasq` for dns and dhcp-ip provisioning. 
+
+## FAQ 
+
+* **Can I configure multiple access points for fallback reasons?**
+  Not per se. But you could configure once access point, disable that one
+  (or move out of its range) and configure a second / third one.
+  This service will try all known connections when in *reconnect* mode.
+  
+* **Are 2.4Ghz / 5 Ghz access points with the same SSID used interchangeably?**
+  No. The user interface always shows the frequency of the selected access point
+  and exactly that one is stored and used. 
+
+-----
+ David Gräff, 2019

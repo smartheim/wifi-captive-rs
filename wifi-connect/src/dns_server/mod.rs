@@ -1,3 +1,7 @@
+//! This is a DNS server implementation that returns the given gateway address for
+//! every request. This will be recognised by most mobile phones and browsers as
+//! a captive portal.
+
 mod byte_buffer;
 mod dns_header;
 mod dns_packet;
@@ -14,7 +18,6 @@ use super::CaptivePortalError;
 use std::clone::Clone;
 use std::net::{SocketAddr, SocketAddrV4};
 use tokio::net::UdpSocket;
-use tokio_net::driver::Handle;
 
 /// A DNS server that responds with one IP for all requests
 pub struct CaptiveDnsServer {
@@ -41,18 +44,17 @@ impl CaptiveDnsServer {
     }
 
     pub async fn run(&mut self) -> Result<(), CaptivePortalError> {
-        let socket = net2::UdpBuilder::new_v4()?
-            .reuse_address(true)?
-            .bind(SocketAddr::V4(self.server_addr.clone()))?;
-        let mut socket = UdpSocket::from_std(socket, &Handle::default())?;
-        socket.set_broadcast(true).unwrap();
+        let mut socket = tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
+        socket
+            .set_broadcast(true)
+            .expect("Set broadcast flag on udp socket");
 
         info!("Started dns server on {}", &self.server_addr);
 
         let mut req_buffer = BytePacketBuffer::new();
         loop {
             let future =
-                super::receive_or_exit(&mut socket, &mut self.exit_receiver, &mut req_buffer.buf)
+                super::utils::receive_or_exit(&mut socket, &mut self.exit_receiver, &mut req_buffer.buf)
                     .await?;
             match future {
                 // Wait for either a received packet or the exit signal
@@ -61,16 +63,16 @@ impl CaptiveDnsServer {
                     if let Ok(p) = DnsPacket::from_buffer(&mut req_buffer) {
                         handle_request(&self, p, socket_addr, &mut req_buffer, &mut socket).await?;
                     }
-                },
+                }
                 // Exit signal received
                 None => break,
             };
             #[cfg(tests)]
-            {
-                if self.only_once {
-                    break;
+                {
+                    if self.only_once {
+                        break;
+                    }
                 }
-            }
         }
 
         drop(socket);
@@ -177,7 +179,7 @@ mod tests {
                     assert_eq!(*ttl, 360);
                     exit_handler.send(()).unwrap();
                     Ok(())
-                },
+                }
                 _ => Err(CaptivePortalError::Generic("Unexpected response")),
             }
         };
@@ -199,7 +201,7 @@ mod tests {
         let r = rt.block_on(select(timeout, test));
         match r {
             Either::Left(_) => panic!("timeout"),
-            _ => {},
+            _ => {}
         };
     }
 }

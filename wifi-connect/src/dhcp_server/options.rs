@@ -275,7 +275,7 @@ pub enum MessageType {
 impl MessageType {
     pub fn from(val: u8) -> Result<MessageType, CaptivePortalError> {
         MessageType::from_u8(val).ok_or_else(|| {
-            CaptivePortalError::OwnedString(format!["Invalid DHCP Message Type: {:?}", val])
+            CaptivePortalError::GenericO(format!["Invalid DHCP Message Type: {:?}", val])
         })
     }
 }

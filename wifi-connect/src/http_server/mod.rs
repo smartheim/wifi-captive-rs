@@ -1,3 +1,11 @@
+//! A hyper based http server that serves the "ui" directory. It also provides a server-send-event
+//! endpoint at /events for live updates on discovered access points.
+//!
+//! ## Crossmodule usage
+//! This module uses the crates error type and uses the
+//! *NetworkManagerEvent*, *WifiConnections* and *WifiConnectionEvent* structs
+//! of the network manager module.
+
 use hyper::header::HeaderValue;
 use hyper::server::conn::AddrStream;
 use hyper::service::{make_service_fn, service_fn};
@@ -10,12 +18,12 @@ use futures_util::future::Either;
 use futures_util::try_future::try_select;
 use serde::Deserialize;
 
-use crate::nm::{NetworkManagerEvent, WifiConnections, WifiConnectionEvent};
-use std::time::Duration;
+use crate::nm::{NetworkManagerEvent, WifiConnectionEvent, WifiConnections};
 use std::path::PathBuf;
+use std::time::Duration;
 
-pub(crate) mod sse;
 mod file_serve;
+pub(crate) mod sse;
 
 #[derive(Deserialize, Debug)]
 pub struct WifiConnectionRequest {
@@ -37,7 +45,7 @@ pub struct HttpServer {
     pub ui_path: PathBuf,
 }
 
-/// The state including the wifi connection list.
+/// The http server state including the wifi connection list.
 pub struct HttpServerState {
     /// If the user selected a connection in the UI, this sender will be called
     connection_sender: Option<tokio::sync::oneshot::Sender<Option<WifiConnectionRequest>>>,
@@ -47,17 +55,27 @@ pub struct HttpServerState {
     pub network_manager: crate::nm::NetworkManager,
 }
 
+/// The thread safe wrapper around the http server state.
 pub type HttpServerStateSync = Arc<Mutex<HttpServerState>>;
 
+/// Called when the user requests a wifi list refresh via /refresh.
+///
+/// ## Crossmodule usage
+/// This method calls into the network manager
 pub async fn user_requests_wifi_list_refresh(state: HttpServerStateSync) -> StatusCode {
     let nm = state.lock().unwrap().network_manager.clone();
     if let Ok(_) = nm.scan_networks().await {
         StatusCode::OK
     } else {
+        // Some network adapters do not allow a scan while a hotspot is running
         StatusCode::INTERNAL_SERVER_ERROR
     }
 }
 
+/// Routes to one of the dynamic routes "/networks" (list of wifi networks),
+/// "/events" (server send events), "/refresh" (requests a wifi scan) and "/connect".
+/// "/connect" will exit the http server and make the future of the outer state
+/// machine to resolve.
 async fn http_router(
     state: HttpServerStateSync,
     ui_path: PathBuf,
@@ -70,6 +88,7 @@ async fn http_router(
         if req.uri().path() == "/networks" {
             let state = state.lock().unwrap();
             let data = serde_json::to_string(&state.connections)?;
+            drop(state); // release mutex
             response.headers_mut().append(
                 "Content-Type",
                 HeaderValue::from_str("application/json").unwrap(),
@@ -98,11 +117,10 @@ async fn http_router(
             output.extend(&bytes[..]);
         }
         let parsed: WifiConnectionRequest = serde_json::from_slice(&output[..])?;
-        let sender = {
-            // unlock mutex as soon as possible
-            let mut state = state.lock().unwrap();
-            state.connection_sender.take().unwrap()
-        };
+        // unlock mutex as soon as possible
+        let mut state = state.lock().unwrap();
+        let sender = state.connection_sender.take().unwrap();
+        drop(state); // release mutex
         sender
             .send(Some(parsed))
             .map_err(|_| CaptivePortalError::Generic("Failed to internally route data"))?;
@@ -128,11 +146,19 @@ impl HttpServer {
             self.connection_receiver,
             self.state,
             self.server_addr,
-            self.ui_path
+            self.ui_path,
         )
     }
 
-    pub fn new(server_addr: SocketAddrV4, nm: crate::nm::NetworkManager, ui_path: PathBuf) -> (HttpServer, tokio::sync::oneshot::Sender<()>) {
+    /// Create a new http server. The gateway address and a clone of the network manager is required.
+    /// If the ui is not compiled in, a valid ui_path must be given as well.
+    ///
+    /// A tuple (http_server, exit handler) is returned. Call the exit handler for a graceful shutdown.
+    pub fn new(
+        server_addr: SocketAddrV4,
+        nm: crate::nm::NetworkManager,
+        ui_path: PathBuf,
+    ) -> (HttpServer, tokio::sync::oneshot::Sender<()>) {
         let (tx, exit_handler) = tokio::sync::oneshot::channel::<()>();
         let (connection_sender, connection_receiver) =
             tokio::sync::oneshot::channel::<Option<WifiConnectionRequest>>();
@@ -160,8 +186,7 @@ impl HttpServer {
     /// when
     pub async fn run(
         self: HttpServer,
-    ) -> Result<Option<WifiConnectionRequest>, super::CaptivePortalError>
-    {
+    ) -> Result<Option<WifiConnectionRequest>, super::CaptivePortalError> {
         // Consume the HttpServer by destructuring into its parts
         let (exit_handler, connection_receiver, state, server_addr, ui_path) = self.into();
 
@@ -174,7 +199,9 @@ impl HttpServer {
             let state = state.clone();
             let ui_path = ui_path.clone();
             async move {
-                let fun = service_fn(move |req| http_router(state.clone(), ui_path.clone(), req, remote_addr));
+                let fun = service_fn(move |req| {
+                    http_router(state.clone(), ui_path.clone(), req, remote_addr)
+                });
                 Ok::<_, hyper::Error>(fun)
             }
         });
@@ -200,7 +227,7 @@ impl HttpServer {
                 // ... every 2 seconds
                 let sleep = tokio_timer::delay_for(Duration::from_secs(2));
                 pin_mut!(sleep);
-                // If the exit handler is called however, quit the loop
+                // If the exit handler is called or dropped however, quit the loop
                 let r = futures_util::future::select(sleep, &mut keep_alive_exit_handler).await;
                 if let Either::Right(_) = r {
                     // Exit handler called
@@ -218,20 +245,27 @@ impl HttpServer {
         let graceful = server.with_graceful_shutdown(async move {
             // We either shutdown when the exit_handler got called OR when we received a connection
             // request by the user.
-            let r = try_select(exit_handler, connection_receiver)
-                .await
-                .ok()
-                .unwrap();
+            let r = try_select(exit_handler, connection_receiver).await;
+
+            let r = match r {
+                Err(e) => {
+                    warn!("try_select failed with {:?}", e);
+                    return;
+                },
+                Ok(v) => v,
+            };
             // select/try_select return an Either. If it's the right side of the Either (received connection),
             // we extract that connection and assign it to the GracefulShutdownState.
             // That object is a thread safe requested-connection wrapper and our way of communicating
             // a state out of this future.
             match r {
                 Either::Right(f) => {
-                    let mut shutdown_state = graceful_shutdown_state_clone.lock().unwrap();
+                    let mut shutdown_state = graceful_shutdown_state_clone
+                        .lock()
+                        .expect("Mutex lock for http server state on graceful shutdown");
                     *shutdown_state = f.0;
                     info!("Received connect state {:?}", *shutdown_state);
-                }
+                },
                 _ => (),
             };
             // Stop server-send-events keep alive and refresh request future
@@ -244,30 +278,41 @@ impl HttpServer {
         info!("Stopped http server on {}", &server_addr);
 
         // Extract the graceful shutdown state
-        let mut state: MutexGuard<GracefulShutdownRequestState> =
-            graceful_shutdown_state.lock().unwrap();
+        let mut state: MutexGuard<GracefulShutdownRequestState> = graceful_shutdown_state
+            .lock()
+            .expect("http server mutex lock for return value");
         Ok(state.take())
     }
 }
 
 /// Call this method to update, add, remove a network
 pub async fn update_network(http_state: HttpServerStateSync, event: WifiConnectionEvent) {
-    let mut state = http_state.lock().unwrap();
+    let mut state = http_state
+        .lock()
+        .expect("Mutex lock for http state on update_network");
     info!("Add network {}", &event.connection.ssid);
     let ref mut connections = state.connections.0;
-    match connections.iter().position(|n| n.ssid == event.connection.ssid) {
+    match connections
+        .iter()
+        .position(|n| n.ssid == event.connection.ssid)
+    {
         Some(pos) => {
             match event.event {
                 NetworkManagerEvent::Added => {
                     use std::mem;
-                    mem::replace(connections.get_mut(pos).unwrap(), event.connection.clone());
-                }
-                NetworkManagerEvent::Removed => { connections.remove(pos); }
+                    let dest = connections
+                        .get_mut(pos)
+                        .expect("update_network: Vector access on connections");
+                    mem::replace(dest, event.connection.clone());
+                },
+                NetworkManagerEvent::Removed => {
+                    connections.remove(pos);
+                },
             };
-        }
+        },
         None => {
             state.connections.0.push(event.connection.clone());
-        }
+        },
     };
     sse::send_wifi_connection(&mut state.sse, &event).expect("json encoding failed");
 }

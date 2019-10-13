@@ -1,3 +1,6 @@
+//! An async dhcp server implementation for a given gateway address. This is a very
+//! rudimentary implementation (no timeouts or lease refreshes), with a fixed /24 subnet.
+//! Client request IP addresses are considered.
 pub mod options;
 pub mod packet;
 
@@ -84,9 +87,10 @@ impl DHCPServer {
     }
 
     pub async fn run(&mut self) -> Result<(), super::CaptivePortalError> {
-        let socket = tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone()));
-        let mut socket = socket.await?;
-        socket.set_broadcast(true).unwrap();
+        let mut socket = tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
+        socket
+            .set_broadcast(true)
+            .expect("Broadcast flag on udpsocket for dhcp server");
 
         info!("Started dhcp server on {}", &self.server_addr);
 
@@ -99,7 +103,7 @@ impl DHCPServer {
         let mut in_buf: [u8; 1500] = [0; 1500];
         loop {
             let future =
-                super::receive_or_exit(&mut socket, &mut self.exit_receiver, &mut in_buf).await?;
+                super::utils::receive_or_exit(&mut socket, &mut self.exit_receiver, &mut in_buf).await?;
             match future {
                 // Wait for either a received packet or the exit signal
                 Some((size, socket_addr)) => {
@@ -108,27 +112,27 @@ impl DHCPServer {
                         match p.message_type() {
                             Ok(options::MessageType::Discover) => {
                                 self.handle_discover(p, &mut sender, &mut socket).await?;
-                            },
+                            }
                             Ok(options::MessageType::Request) => {
                                 self.handle_request(p, &mut sender, &mut socket).await?;
-                            },
+                            }
                             Ok(options::MessageType::Release)
                             | Ok(options::MessageType::Decline) => {
                                 self.handle_release(p);
-                            },
-                            _ => {},
+                            }
+                            _ => {}
                         };
                     }
-                },
+                }
                 // Exit signal received
                 None => break,
             };
             #[cfg(tests)]
-            {
-                if self.only_once {
-                    break;
+                {
+                    if self.only_once {
+                        break;
+                    }
                 }
-            }
         }
 
         info!("Stopped dhcp server on {}", &self.server_addr);
@@ -234,7 +238,7 @@ impl DHCPServer {
                 sender,
                 socket,
             )
-            .await;
+                .await;
         }
 
         Ok(0)
@@ -258,7 +262,7 @@ impl DHCPServer {
                 } else {
                     [x[0], x[1], x[2], x[3]]
                 }
-            },
+            }
         };
         if !self.available(&in_packet.chaddr, &req_ip) {
             return reply(
@@ -269,7 +273,7 @@ impl DHCPServer {
                 sender,
                 socket,
             )
-            .await;
+                .await;
         }
         {
             self.leases.insert(
@@ -288,7 +292,7 @@ impl DHCPServer {
             sender,
             socket,
         )
-        .await
+            .await
     }
 
     fn handle_release(&mut self, in_packet: packet::Packet<'_>) {
@@ -409,7 +413,7 @@ mod tests {
     use tokio::runtime::Runtime;
     use tokio_net::udp::UdpSocket;
 
-    pub fn new_dhcp_discover(request_ip: [u8; 4]) -> Vec<u8> {
+    fn new_dhcp_discover(request_ip: [u8; 4]) -> Vec<u8> {
         let mut vec = Vec::with_capacity(1000);
         vec.resize(1000, 0);
         let mut options_buf: [u8; 10] = [0; 10];
@@ -451,7 +455,7 @@ mod tests {
         vec
     }
 
-    pub fn new_dhcp_request(request_ip: [u8; 4], server_ip: [u8; 4]) -> Vec<u8> {
+    fn new_dhcp_request(request_ip: [u8; 4], server_ip: [u8; 4]) -> Vec<u8> {
         let mut vec = Vec::with_capacity(1000);
         vec.resize(1000, 0);
         let mut options_buf: [u8; 10] = [0; 10];
@@ -543,7 +547,9 @@ mod tests {
             let mut res_buffer: [u8; 300] = [0; 300];
             let r = query(&mut res_buffer, request_ip, socket_addr).await?;
             assert_eq!(&r.yiaddr, &request_ip);
-            exit_handler.send(()).unwrap();
+            exit_handler
+                .send(())
+                .expect("Exit handler send for dhcp server run");
             Ok(())
         };
 
@@ -554,7 +560,7 @@ mod tests {
 
     #[test]
     fn test_domain() {
-        let rt = Runtime::new().unwrap();
+        let rt = Runtime::new().expect("Runtime for dhcp test");
 
         let timeout = tokio_timer::delay_for(Duration::from_secs(2));
         pin_mut!(timeout);
@@ -564,7 +570,7 @@ mod tests {
         let r = rt.block_on(select(timeout, test));
         match r {
             Either::Left(_) => panic!("timeout"),
-            _ => {},
+            _ => {}
         };
     }
 }

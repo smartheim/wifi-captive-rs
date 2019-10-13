@@ -1,3 +1,6 @@
+//! This module contains connectivity and state related types. This includes
+//! network manager state as well as connection and device state.
+
 use enumflags2::BitFlags;
 use lazy_static::lazy_static;
 
@@ -14,13 +17,6 @@ pub enum NetworkManagerState {
     ConnectedGlobal = 64,
 }
 
-// State types for convenience
-lazy_static! {
-pub static ref NETWORK_MANAGER_STATE_NOT_CONNECTED: BitFlags<NetworkManagerState> = NetworkManagerState::Unknown | NetworkManagerState::Asleep | NetworkManagerState::Disconnected;
-pub static ref NETWORK_MANAGER_STATE_CONNECTED: BitFlags<NetworkManagerState> = NetworkManagerState::ConnectedGlobal | NetworkManagerState::ConnectedLocal | NetworkManagerState::ConnectedSite;
-pub static ref NETWORK_MANAGER_STATE_TEMP: BitFlags<NetworkManagerState> = NetworkManagerState::Connecting | NetworkManagerState::Disconnecting;
-}
-
 impl From<u32> for NetworkManagerState {
     fn from(state: u32) -> Self {
         match state {
@@ -35,7 +31,7 @@ impl From<u32> for NetworkManagerState {
             _ => {
                 warn!("Undefined Network Manager state: {}", state);
                 NetworkManagerState::Unknown
-            }
+            },
         }
     }
 }
@@ -61,9 +57,23 @@ impl From<u32> for Connectivity {
             _ => {
                 warn!("Undefined connectivity state: {}", state);
                 Connectivity::Unknown
-            }
+            },
         }
     }
+}
+
+// State types for convenience
+lazy_static! {
+    pub static ref NETWORK_MANAGER_STATE_NOT_CONNECTED: BitFlags<NetworkManagerState> =
+        NetworkManagerState::Unknown
+            | NetworkManagerState::Asleep
+            | NetworkManagerState::Disconnected;
+    pub static ref NETWORK_MANAGER_STATE_CONNECTED: BitFlags<NetworkManagerState> =
+        NetworkManagerState::ConnectedGlobal
+            | NetworkManagerState::ConnectedLocal
+            | NetworkManagerState::ConnectedSite;
+    pub static ref NETWORK_MANAGER_STATE_TEMP: BitFlags<NetworkManagerState> =
+        NetworkManagerState::Connecting | NetworkManagerState::Disconnecting;
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -86,11 +96,10 @@ impl From<u32> for ConnectionState {
             _ => {
                 warn!("Undefined connection state: {}", state);
                 ConnectionState::Unknown
-            }
+            },
         }
     }
 }
-
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum DeviceState {
@@ -128,16 +137,16 @@ impl From<i64> for DeviceState {
             _ => {
                 warn!("Undefined device state: {}", state);
                 DeviceState::Unknown
-            }
+            },
         }
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum DeviceType {
-    Unknown=0,
-    Ethernet=1,
-    WiFi=2,
+    Unknown = 0,
+    Ethernet = 1,
+    WiFi = 2,
     Unused1,
     Unused2,
     Bt,
@@ -189,7 +198,7 @@ impl From<i64> for DeviceType {
             _ => {
                 warn!("Undefined device type: {}", device_type);
                 DeviceType::Unknown
-            }
+            },
         }
     }
 }

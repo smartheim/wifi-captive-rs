@@ -1,12 +1,12 @@
 use super::config::Config;
 
 use crate::http_server::WifiConnectionRequest;
-use crate::nm::{NetworkManager, NetworkManagerState, ConnectionState};
+use crate::nm::{ConnectionState, NetworkManager, NetworkManagerState,Connectivity};
+use crate::utils::{ctrl_c_or_future, timed_future};
 use crate::CaptivePortalError;
 use log::info;
 use std::time::Duration;
-use crate::utils::ctrl_c_or_future;
-
+use enumflags2::BitFlags;
 
 /// The programs state machine. Each state carries its required data, no side-effects.
 /// The configuration and network manager connection are moved between states.
@@ -76,25 +76,33 @@ impl StateMachine {
     pub async fn progress(self) -> Result<Option<StateMachine>, CaptivePortalError> {
         match self {
             StateMachine::StartUp(config) => {
-                info!("Starting up");
-                let nm = NetworkManager::new(&config).await?;
+                let nm = NetworkManager::new(&config.interface).await?;
+                nm.enable_networking_and_wifi().await?;
 
                 let state = nm.state().await?;
+                info!("Starting up. Network manager reports state {:?}", state);
                 Ok(match state {
-                    NetworkManagerState::Unknown | NetworkManagerState::Asleep | NetworkManagerState::Disconnected => {
+                    NetworkManagerState::Unknown
+                    | NetworkManagerState::Asleep
+                    | NetworkManagerState::Disconnected => {
                         Some(StateMachine::ActivatePortal(config, nm))
                     }
                     NetworkManagerState::Disconnecting | NetworkManagerState::Connecting => {
                         Some(StateMachine::TryReconnect(config, nm))
                     }
-                    NetworkManagerState::ConnectedLocal | NetworkManagerState::ConnectedSite | NetworkManagerState::ConnectedGlobal => {
+                    NetworkManagerState::ConnectedLocal
+                    | NetworkManagerState::ConnectedSite
+                    | NetworkManagerState::ConnectedGlobal => {
                         Some(StateMachine::Connected(config, nm))
                     }
                 })
             }
             StateMachine::TryReconnect(config, nm) => {
+                info!("No connection found. Trying to reestablish");
+                nm.enable_networking_and_wifi().await?;
+
                 // Try to connect to an existing connection
-                let r = ctrl_c_or_future(nm.try_auto_connect(Duration::from_secs(10))).await?;
+                let r = ctrl_c_or_future(nm.try_auto_connect(Duration::from_secs(config.wait_before_reconfigure))).await?;
                 match r {
                     // Ctrl+C
                     None => return Ok(Some(StateMachine::Exit(nm))),
@@ -107,43 +115,84 @@ impl StateMachine {
                 return Ok(Some(StateMachine::ActivatePortal(config, nm)));
             }
             StateMachine::Connected(config, nm) => {
-                info!("Connected");
+                info!("Connection established");
+                let expected_connectivity: BitFlags<Connectivity> = match config.internet_connectivity {
+                    true => Connectivity::Full.into(),
+                    false => Connectivity::Full | Connectivity::Limited | Connectivity::Portal
+                };
+                nm.wait_for_connectivity(expected_connectivity, Duration::from_secs(5), false).await?;
                 info!("Current connectivity: {:?}", nm.connectivity().await?);
 
-                let r = ctrl_c_or_future(nm.wait_until_state(*crate::nm::NETWORK_MANAGER_STATE_NOT_CONNECTED, None, false)).await?;
+                if config.quit_after_connected {
+                    return Ok(Some(StateMachine::Exit(nm)));
+                }
+
+                let r = ctrl_c_or_future(nm.wait_until_state(
+                    *crate::nm::NETWORK_MANAGER_STATE_NOT_CONNECTED,
+                    None,
+                    false,
+                ))
+                    .await?;
                 match r {
                     // Ctrl+C
                     None => Ok(Some(StateMachine::Exit(nm))),
-                    Some(_) => Ok(Some(StateMachine::TryReconnect(config, nm)))
+                    Some(_) => Ok(Some(StateMachine::TryReconnect(config, nm))),
                 }
             }
             StateMachine::ActivatePortal(config, nm) => {
-                info!("Activating portal");
+                nm.enable_networking_and_wifi().await?;
 
+                let r = timed_future(
+                    nm.create_start_hotspot(
+                        config.ssid.clone(),
+                        config.passphrase.clone(),
+                        Some(config.gateway),
+                    ),
+                    Duration::from_secs(10),
+                )
+                    .await;
+
+                let active_connection = if let Some(r) = r {
+                    r?.active_connection_path
+                } else {
+                    warn!("Failed to create hotspot: Timeout. Trying to establish a connection instead.");
+                    return Ok(Some(StateMachine::TryReconnect(config, nm)));
+                };
+
+                info!("Activating portal services");
                 use super::state_machine_portal_helper::start_portal;
-
-                nm.create_start_hotspot(config.ssid.clone(),config.passphrase.clone(),Some(config.gateway)).await?;
-
-                let r = ctrl_c_or_future(start_portal(&nm, &config)).await?;
+                let r = ctrl_c_or_future(start_portal(&nm, &config, active_connection)).await?;
                 match r {
                     // Ctrl+C
                     None => Ok(Some(StateMachine::Exit(nm))),
                     // Either the user has entered a wifi connection or a timeout happened
                     Some(wifi_connection) => match wifi_connection {
-                        Some(wifi_connection) => Ok(Some(StateMachine::Connect(config, nm, wifi_connection))),
+                        Some(wifi_connection) => {
+                            Ok(Some(StateMachine::Connect(config, nm, wifi_connection)))
+                        }
                         // A timeout means that we should retry to connect to an existing connection
-                        None => Ok(Some(StateMachine::TryReconnect(config, nm)))
-                    }
+                        None => Ok(Some(StateMachine::TryReconnect(config, nm))),
+                    },
                 }
             }
             StateMachine::Connect(config, nm, network) => {
                 info!("Connecting ...");
 
-                let connection = nm.connect_to(network.ssid, network.hw, crate::nm::credentials_from_data(network.passphrase, network.identity, network.mode)?).await?;
+                let connection = nm
+                    .connect_to(
+                        network.ssid,
+                        network.hw,
+                        crate::nm::credentials_from_data(
+                            network.passphrase,
+                            network.identity,
+                            &network.mode,
+                        )?,
+                    )
+                    .await?;
                 if let Some(connection) = connection {
                     match connection.state {
                         ConnectionState::Activated => Ok(Some(StateMachine::Connected(config, nm))),
-                        _ => Ok(Some(StateMachine::ActivatePortal(config, nm)))
+                        _ => Ok(Some(StateMachine::ActivatePortal(config, nm))),
                     }
                 } else {
                     Ok(Some(StateMachine::ActivatePortal(config, nm)))

@@ -1,10 +1,12 @@
-use super::NM_INTERFACE;
+//! Security related types and bit fields are declared in this module.
+
+use super::NM_BUSNAME;
+use crate::CaptivePortalError;
 use bitflags::bitflags;
 use dbus::nonblock;
 use dbus::nonblock::SyncConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::CaptivePortalError;
 
 #[derive(Debug, Clone)]
 pub enum AccessPointCredentials {
@@ -88,8 +90,13 @@ impl Security {
     }
 }
 
-pub fn credentials_from_data(passphrase: Option<String>, identity: Option<String>, mode: String) -> Result<AccessPointCredentials, CaptivePortalError> {
-    match &mode[..] {
+// Converts a set of credentials into the [`AccessPointCredentials`] type.
+pub fn credentials_from_data(
+    passphrase: Option<String>,
+    identity: Option<String>,
+    mode: &str,
+) -> Result<AccessPointCredentials, CaptivePortalError> {
+    match mode {
         "enterprise" => Ok(AccessPointCredentials::Enterprise {
             identity: identity.ok_or(CaptivePortalError::no_shared_key())?,
             passphrase: passphrase.ok_or(CaptivePortalError::no_shared_key())?,
@@ -101,16 +108,17 @@ pub fn credentials_from_data(passphrase: Option<String>, identity: Option<String
             passphrase: passphrase.ok_or(CaptivePortalError::no_shared_key())?,
         }),
         "none" => Ok(AccessPointCredentials::None),
-        _ => Err(CaptivePortalError::Generic("Expected an encryption mode"))
+        _ => Err(CaptivePortalError::Generic("Expected an encryption mode")),
     }
 }
 
-
+// Returns the encryption mode of an dbus access point path. The encryption mode depends on
+// quite a few flags and that's why it is encapsulated into its own method.
 pub async fn get_access_point_security(
     conn: Arc<SyncConnection>,
     ap_path: &dbus::Path<'_>,
 ) -> Result<Security, super::CaptivePortalError> {
-    let access_point_data = nonblock::Proxy::new(NM_INTERFACE, ap_path, conn.clone());
+    let access_point_data = nonblock::Proxy::new(NM_BUSNAME, ap_path, conn.clone());
     use super::access_point::AccessPoint;
     let flags = NM80211ApFlags::from_bits(access_point_data.flags().await?)
         .unwrap_or(NM80211ApFlags::AP_FLAGS_NONE);

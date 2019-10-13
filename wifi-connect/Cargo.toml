@@ -1,8 +1,9 @@
 [package]
 name = "wifi-captive"
 version = "4.3.0"
-authors = ["Zahari Petkov <zahari@balena.io>", "Aaron Brodersen <aaron@resin.io>", "David Graeff <david.graeff@web.de>"]
+authors = ["David Graeff <david.graeff@web.de>"]
 description = "Wifi Setup service with captive portal. Requires the network manager DBUS API and linux NET_BINDSERVICE sys capability."
+readme = "readme.md"
 homepage = "https://github.com/openhab-nodes/ohx-os/wifi-connect"
 repository = "https://github.com/openhab-nodes/ohx-os"
 keywords = ["network_manager", "network-manager", "networking", "Wi-Fi", "wifi"]
@@ -11,45 +12,51 @@ license = "Apache-2.0"
 edition = "2018"
 
 [dependencies]
+# General
 serde = { version = "1.0.101", features = ["derive"] }
 serde_json = "1.0.41"
 serde_derive = "1.0.101"
 log = "0.4.8"
 env_logger = "0.7.0"
 nix = "0.15.0"
+structopt = "0.3.2"
 
 bitflags = "1.2.0"
 ascii = "1.0.0"
 bitintr = "0.3.0"
-structopt = "0.3.2"
-failure = "0.1.5"
 
-dbus = "^0"
-futures = { version = "^0.3.0-alpha.18", package = "futures-preview", features = ["compat"] }
+# Async
+futures-core =  { version = "^0.3.0-alpha.18", package = "futures-core-preview"}
 futures-util =  { version = "^0.3.0-alpha.18", package = "futures-util-preview"}
 futures-channel =  { version = "^0.3.0-alpha.18", package = "futures-channel-preview"}
 tokio-net = {version="0.2.0-alpha.6",features = ["signal"]}
 tokio-timer = "0.3.0-alpha.6"
 tokio = { version = "0.2.0-alpha.6", features = ["sync"] }
 pin-utils = "0.1.0-alpha.4"
+mio = "0.6.19"
 
-# For dhcp server
+# Network manager
+dbus = "^0"
+enumflags2 = "0.6.0"
+lazy_static = "1.4.0"
+
+# dhcp server
 enum-primitive-derive = "0.1.2"
 num-traits = "0.2.8"
-net2 = "0.2.33"
 
 # Web server
 hyper = "0.13.0-alpha.4"
 mime_guess = "2.0.1"
 include_dir = "0.2.1"
 chrono = "0.4.9"
-mio = "0.6.19"
-enumflags2 = "0.6.0"
-lazy_static = "1.4.0"
+
+# Render the readme file on doc.rs
+[package.metadata.docs.rs]
+features = [ "external_doc", "rocket_support" ]
 
 [patch.crates-io]
 #dbus = { git = 'https://github.com/diwic/dbus-rs' }
-dbus = { path = '../dbus-rs/dbus' }
+dbus = { path = './dbus-rs-copy' }
 
 [features]
 default = []

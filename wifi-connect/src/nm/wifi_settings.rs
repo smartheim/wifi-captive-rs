@@ -1,16 +1,19 @@
-use super::{add_str, add_val, AccessPointCredentials, VariantMap, SSID, NM_CONNECTION_INTERFACE, security};
+//! A network manager dbus API wifi connection does not have convenient properties for all its
+//! settings. Instead settings are submitted and retrieved in a specific HashMap (which contains
+//! dbus crate Variants and VariantMaps).
+//!
+//! This module creates and encodes those data containers.
+
+use super::{security, AccessPointCredentials, NM_BUSNAME, SSID};
 use crate::utils::verify_ascii_password;
 use crate::CaptivePortalError;
 
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
-use dbus::{
-    nonblock,
-    nonblock::SyncConnection,
-    arg::Variant,
-};
-use dbus::arg::RefArg;
+
+use dbus::arg::{RefArg, Variant};
+use dbus::{nonblock, nonblock::SyncConnection};
 
 const NM_WEP_KEY_TYPE_PASSPHRASE: u8 = 2;
 
@@ -29,50 +32,98 @@ pub struct WiFiConnectionSettings {
     pub seen_bssids: Vec<String>,
 }
 
+/**
+Network manager example output:
+
+{'802-11-wireless': {'mac-address-blacklist': [],
+                     'mode': 'ap',
+                     'security': '802-11-wireless-security',
+                     'seen-bssids': ['30:52:CB:84:B5:B5'],
+                     'ssid': [100,
+                              97,
+                              118,
+                              105,
+                              100,
+                              108,
+                              97,
+                              112,
+                              116,
+                              111,
+                              112]},
+ '802-11-wireless-security': {'group': ['ccmp'],
+                              'key-mgmt': 'wpa-psk',
+                              'pairwise': ['ccmp'],
+                              'proto': ['rsn']},
+ 'connection': {'autoconnect': False,
+                'id': 'Hotspot',
+                'permissions': [],
+                'timestamp': 1570824896,
+                'type': '802-11-wireless',
+                'uuid': 'a2f7487b-cb73-42f1-88ec-38325584736b'},
+ 'ipv4': {'address-data': [],
+          'addresses': [],
+          'dns': [],
+          'dns-search': [],
+          'method': 'shared',
+          'route-data': [],
+          'routes': []},
+ 'ipv6': {'address-data': [],
+          'addresses': [],
+          'dns': [],
+          'dns-search': [],
+          'method': 'auto',
+          'route-data': [],
+          'routes': []},
+ 'proxy': {}}
+*/
 pub(crate) fn make_arguments_for_sta(
     ssid: SSID,
     password: Option<String>,
     address: Option<Ipv4Addr>,
     interface: &str,
+    uuid: &str,
 ) -> Result<HashMap<&'static str, VariantMap>, CaptivePortalError> {
+    let mut settings: HashMap<&'static str, VariantMap> = HashMap::new();
+
     let mut wireless: VariantMap = HashMap::new();
-    add_val(&mut wireless, "ssid", ssid.clone());
+    add_val(&mut wireless, "ssid", ssid.as_bytes().to_owned());
     add_str(&mut wireless, "band", "bg");
     add_val(&mut wireless, "hidden", false);
     add_str(&mut wireless, "mode", "ap");
+    if let Some(password) = password {
+        add_str(&mut wireless, "security", "802-11-wireless-security");
 
+        let mut security: VariantMap = HashMap::new();
+        add_str(&mut security, "key-mgmt", "wpa-psk");
+        add_str(&mut security, "psk", &verify_ascii_password(password)?);
+
+        settings.insert("802-11-wireless-security", security);
+    }
+    settings.insert("802-11-wireless", wireless);
+
+    // See https://developer.gnome.org/NetworkManager/stable/nm-settings.html
     let mut connection: VariantMap = HashMap::new();
-    add_val(&mut connection, "autoconnect", false);
-    add_val(&mut connection, "id", ssid);
+    add_str(&mut connection, "id", "Hotspot");
     add_str(&mut connection, "interface-name", interface);
+    add_str(&mut connection, "uuid", uuid);
     add_str(&mut connection, "type", "802-11-wireless");
+    add_val(&mut connection, "autoconnect", false);
+    settings.insert("connection", connection);
 
     let mut ipv4: VariantMap = HashMap::new();
     if let Some(address) = address {
         add_str(&mut ipv4, "method", "manual");
 
         let mut addr_map: HashMap<String, Variant<Box<dyn RefArg>>> = HashMap::new();
-        addr_map.insert("address".to_owned(), Variant(Box::new(format!("{}", address))));
+        addr_map.insert(
+            "address".to_owned(),
+            Variant(Box::new(format!("{}", address))),
+        );
         addr_map.insert("prefix".to_owned(), Variant(Box::new(24_u32)));
         add_val(&mut ipv4, "address-data", vec![addr_map]);
     } else {
         add_str(&mut ipv4, "method", "shared");
     }
-
-    let mut settings: HashMap<&'static str, VariantMap> = HashMap::new();
-
-    if let Some(password) = password {
-        add_str(&mut wireless, "security", "802-11-wireless-security");
-
-        let mut security: VariantMap = HashMap::new();
-        add_str(&mut security, "key-mgmt", "wpa-psk");
-        add_val(&mut security, "psk", verify_ascii_password(password)?);
-
-        settings.insert("802-11-wireless-security", security);
-    }
-
-    settings.insert("802-11-wireless", wireless);
-    settings.insert("connection", connection);
     settings.insert("ipv4", ipv4);
 
     Ok(settings)
@@ -95,7 +146,7 @@ pub(crate) fn make_arguments_for_ap<T: Eq + std::hash::Hash + std::convert::From
     let mut settings: HashMap<T, VariantMap> = HashMap::new();
 
     let mut wireless: VariantMap = HashMap::new();
-    add_val(&mut wireless, "ssid", ssid);
+    add_val(&mut wireless, "ssid", ssid.as_bytes().to_owned());
     settings.insert("802-11-wireless".into(), wireless);
 
     let mut connection: VariantMap = HashMap::new();
@@ -110,7 +161,9 @@ pub(crate) fn make_arguments_for_ap<T: Eq + std::hash::Hash + std::convert::From
 
 /// Adds necessary entries to the given settings map.
 /// To be used by wifi device connect and [`add_wifi_connection`].
-pub fn prepare_wifi_security_settings<T: Eq + std::hash::Hash + std::convert::From<&'static str>>(
+pub fn prepare_wifi_security_settings<
+    T: Eq + std::hash::Hash + std::convert::From<&'static str>,
+>(
     credentials: &AccessPointCredentials,
     settings: &mut HashMap<T, VariantMap>,
 ) -> Result<(), CaptivePortalError> {
@@ -130,7 +183,7 @@ pub fn prepare_wifi_security_settings<T: Eq + std::hash::Hash + std::convert::Fr
             );
 
             settings.insert("802-11-wireless-security".into(), security_settings);
-        }
+        },
         AccessPointCredentials::Wpa { ref passphrase } => {
             let mut security_settings: VariantMap = HashMap::new();
 
@@ -142,7 +195,7 @@ pub fn prepare_wifi_security_settings<T: Eq + std::hash::Hash + std::convert::Fr
             );
 
             settings.insert("802-11-wireless-security".into(), security_settings);
-        }
+        },
         AccessPointCredentials::Enterprise {
             ref identity,
             ref passphrase,
@@ -159,14 +212,31 @@ pub fn prepare_wifi_security_settings<T: Eq + std::hash::Hash + std::convert::Fr
 
             settings.insert("802-11-wireless-security".into(), security_settings);
             settings.insert("802-1x".into(), eap);
-        }
-        AccessPointCredentials::None => {}
+        },
+        AccessPointCredentials::None => {},
     };
     Ok(())
 }
 
 pub fn extract(key: &str, map: &HashMap<String, Variant<Box<dyn RefArg>>>) -> String {
-    map.get(key).and_then(|v| Some(v.as_str().unwrap().to_owned())).unwrap_or_default()
+    map.get(key)
+        .and_then(|v| v.0.as_str().and_then(|v| Some(v.to_owned())))
+        .unwrap_or_default()
+}
+
+pub fn extract_vector(key: &str, map: &HashMap<String, Variant<Box<dyn RefArg>>>) -> Vec<String> {
+    map.get(key)
+        .and_then(|v| v.0.as_iter())
+        .and_then(|v| {
+            Some(
+                v.filter_map(|v| match v.as_str() {
+                    Some(v) => Some(v.to_owned()),
+                    None => None,
+                })
+                .collect(),
+            )
+        })
+        .unwrap_or_default()
 }
 
 /// Return a wifi connection settings object if the given connection is a wifi connection and None otherwise.
@@ -174,29 +244,31 @@ pub async fn get_connection_settings(
     conn: Arc<SyncConnection>,
     connection_path: dbus::Path<'_>,
 ) -> Result<Option<WiFiConnectionSettings>, CaptivePortalError> {
-    let p = nonblock::Proxy::new(NM_CONNECTION_INTERFACE, connection_path, conn.clone());
+    let p = nonblock::Proxy::new(NM_BUSNAME, connection_path, conn.clone());
     use super::generated::connection_nm::Connection;
 
     let dict = p.get_settings().await?;
 
-    let wireless_settings = dict.get("802-11-wireless");
-    let connection_settings = dict.get("connection");
-    if wireless_settings.is_none() || connection_settings.is_none() {
+    let wireless_settings = if let Some(v) = dict.get("802-11-wireless") {
+        v
+    } else {
         return Ok(None);
-    }
-    let wireless_settings = wireless_settings.unwrap();
-    let connection_settings = connection_settings.unwrap();
-
-    // This monstrosity first extracts "seen-bssids" (if any otherwise a default empty vector is used).
-    // The Variant is then casted into an iterator. Each entry is mapped to a String and in the end "collect"ed.
-    let seen_bssids: Vec<String> = wireless_settings.get("seen-bssids")
-        .and_then(|v| Some(v.as_iter().unwrap()
-            .map(|v| v.as_str().unwrap().to_owned()).collect())).unwrap_or_default();
+    };
+    let connection_settings = if let Some(v) = dict.get("connection") {
+        v
+    } else {
+        return Ok(None);
+    };
 
     let mode = match &extract("mode", &wireless_settings)[..] {
         "ap" => WifiConnectionMode::AP,
         "infrastructure" => WifiConnectionMode::Infrastructure,
-        s => return Err(CaptivePortalError::OwnedString(format!("Wifi device mode not recognised: {}", s)))
+        s => {
+            return Err(CaptivePortalError::GenericO(format!(
+                "Wifi device mode not recognised: {}",
+                s
+            )))
+        },
     };
 
     Ok(Some(WiFiConnectionSettings {
@@ -204,6 +276,25 @@ pub async fn get_connection_settings(
         uuid: extract("uuid", &connection_settings),
         ssid: extract("ssid", &wireless_settings),
         mode,
-        seen_bssids,
+        seen_bssids: extract_vector("seen-bssids", &wireless_settings),
     }))
+}
+
+/// Dbus library helper type
+pub(crate) type VariantMap = HashMap<&'static str, Variant<Box<dyn RefArg>>>;
+pub(crate) type VariantMapNested =
+    HashMap<&'static str, HashMap<&'static str, Variant<Box<dyn RefArg>>>>;
+
+pub fn add_val<V>(map: &mut VariantMap, key: &'static str, value: V)
+where
+    V: RefArg + 'static,
+{
+    map.insert(key, Variant(Box::new(value)));
+}
+
+pub fn add_str<V>(map: &mut VariantMap, key: &'static str, value: V)
+where
+    V: Into<String>,
+{
+    map.insert(key, Variant(Box::new(value.into())));
 }

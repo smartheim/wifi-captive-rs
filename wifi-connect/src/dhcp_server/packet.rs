@@ -1,11 +1,13 @@
 use super::super::CaptivePortalError;
 use super::options::*;
 
+// Fixed magic cookie of this implementation
 const COOKIE: [u8; 4] = [99, 130, 83, 99];
 
+// From Client
 const BOOT_REQUEST: u8 = 1;
-// From Client;
-const BOOT_REPLY: u8 = 2; // From Server;
+// From Server
+const BOOT_REPLY: u8 = 2;
 
 const END: u8 = 255;
 const PAD: u8 = 0;
@@ -38,7 +40,7 @@ pub fn decode(p: &[u8]) -> Result<Packet, CaptivePortalError> {
         BOOT_REQUEST => false,
         _ => return Err(CaptivePortalError::Generic("Invalid OpCode")),
     };
-    // TODO hlen check
+
     let mut options = Vec::new();
     let mut i: usize = 240;
     loop {
@@ -92,7 +94,7 @@ impl<'a> Packet<'a> {
     pub fn message_type(&self) -> Result<MessageType, CaptivePortalError> {
         if let Some(x) = self.option(DHCP_MESSAGE_TYPE) {
             if x.len() != 1 {
-                Err(CaptivePortalError::OwnedString(format![
+                Err(CaptivePortalError::GenericO(format![
                     "Invalid length for DHCP MessageType: {}",
                     x.len()
                 ]))
@@ -100,7 +102,7 @@ impl<'a> Packet<'a> {
                 MessageType::from(x[0])
             }
         } else {
-            Err(CaptivePortalError::OwnedString(format![
+            Err(CaptivePortalError::GenericO(format![
                 "Packet does not have MessageType option"
             ]))
         }

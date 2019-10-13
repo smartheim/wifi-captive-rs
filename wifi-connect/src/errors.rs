@@ -1,5 +1,9 @@
 //! # Error and Result Type
+//!
+//! This crate uses one wrapping error type.
+//! Sub-modules and methods should return a specific error type whenever possible though.
 
+use hyper::http;
 use std::error;
 use std::fmt;
 
@@ -10,7 +14,7 @@ use std::fmt;
 pub enum CaptivePortalError {
     /// Generic errors are very rarely used and only used if no other error type matches
     Generic(&'static str),
-    OwnedString(String),
+    GenericO(String),
     /// Serialisation failed
     Ser(serde_json::Error),
     Ascii(ascii::AsAsciiStrError),
@@ -27,7 +31,7 @@ impl Unpin for CaptivePortalError {}
 
 impl std::convert::From<std::convert::Infallible> for CaptivePortalError {
     fn from(error: std::convert::Infallible) -> Self {
-        CaptivePortalError::OwnedString(error.to_string())
+        CaptivePortalError::GenericO(error.to_string())
     }
 }
 
@@ -43,9 +47,14 @@ impl std::convert::From<std::string::FromUtf8Error> for CaptivePortalError {
     }
 }
 
+impl std::convert::From<hyper::header::ToStrError> for CaptivePortalError {
+    fn from(error: http::header::ToStrError) -> Self {
+        CaptivePortalError::GenericO(error.to_string())
+    }
+}
 impl std::convert::From<std::string::String> for CaptivePortalError {
     fn from(error: std::string::String) -> Self {
-        CaptivePortalError::OwnedString(error)
+        CaptivePortalError::GenericO(error)
     }
 }
 
@@ -94,7 +103,7 @@ impl fmt::Display for CaptivePortalError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             CaptivePortalError::Generic(m) => write!(f, "{}", m),
-            CaptivePortalError::OwnedString(ref m) => write!(f, "{}", m),
+            CaptivePortalError::GenericO(ref m) => write!(f, "{}", m),
             CaptivePortalError::IO(ref e) => e.fmt(f),
             CaptivePortalError::Hyper(ref e) => e.fmt(f),
             CaptivePortalError::Ascii(ref e) => e.fmt(f),
@@ -112,7 +121,7 @@ impl error::Error for CaptivePortalError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             CaptivePortalError::Generic(ref _m) => None,
-            CaptivePortalError::OwnedString(ref _m) => None,
+            CaptivePortalError::GenericO(ref _m) => None,
             CaptivePortalError::IO(ref e) => Some(e),
             CaptivePortalError::Hyper(ref e) => Some(e),
             CaptivePortalError::Ascii(ref e) => Some(e),

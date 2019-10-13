@@ -5,9 +5,12 @@ set -u
 trap "exit 1" TERM
 export TOP_PID=$$
 
-: "${APPNAME:=deploy}"
-: "${CIRCLE_FULL_ENDPOINT:=https://circleci.com/api/v1.1/project/github/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME}"
-: "${CIRCLE_TAG:=}"
+if [ -f github_token.inc ]; then
+  source github_token.inc
+fi
+
+: "${APPNAME:=wifi-captive}"
+: "${GITHUB_TOKEN:=}"
 
 main() {
     need_cmd curl
@@ -20,65 +23,63 @@ main() {
     need_cmd basename
     need_cmd file
 
-    if [ -z "$CIRCLE_TAG" ]; then
-        say "Deploying only when CIRCLE_TAG is defined"
-        exit 0
-    fi
-    
-    # Get the list with CircleCI build numbers for the current tagged release
-    local _builds
-    local _filter
     local _build_nums
-    
-    _builds=$(ensure circle "$CIRCLE_FULL_ENDPOINT")
-    _filter='.[] | select(.vcs_tag == "'$CIRCLE_TAG'" and .vcs_revision == "'$CIRCLE_SHA1'" and .workflows.job_name != "deploy") | .build_num'
-    _build_nums=$(ensure jq "$_filter" <<< "$_builds")
-
-    if [ -z "$_build_nums" ]; then
-        err "No builds for tagged release $CIRCLE_TAG"
-    fi
-
-    ensure mkdir -p /tmp/artifacts
-
-    IFS=$'\n'
-    for build_num in $_build_nums; do
-        say "Downloading artifacts for #${build_num}..."
-
-        local _artifacts_json
-        local _artifacts
-
-        _artifacts_json=$(circle "$CIRCLE_FULL_ENDPOINT/$build_num/artifacts")
-        _artifacts=$(ensure jq -r '.[] | .url' <<< "$_artifacts_json")
-
-        for artifact in $_artifacts; do
-            say "$artifact"
-            (ensure cd /tmp/artifacts; ensure curl -sSOL --retry 3 "$artifact")
-        done
-    done
-
+    local _tagname
+    local _title
     local _body
     local _payload
     local _response
     local _upload_url
 
+
+    if [ -z "$GITHUB_TOKEN" ]; then
+        say "No github token set!"
+        exit 0
+    fi
+
+    ensure mkdir -p target/releases
+
+    # Build linux x86_64 variant
+    ensure cargo build --release
+    ensure cp target/release/wifi-captive target/releases/linux_$(uname -m)
+
+    # Strip files
+    local _size
+    for _file in target/releases/*; do
+        ensure strip $_file
+        _size = $(du -h $_file | cut -f 1)
+        say "Binary $_file ($_size)"
+    done
+
+    _build_nums=$(ensure git rev-parse HEAD)
+
+    _tagname=$(cat CHANGELOG.md |grep -Po "v([0-9]{1,}\.)+[0-9]{1,}" -m 1)
+
     # Grab latest release notes from the Changelog
-    _body=$(
+    _title=$(
         ensure cat CHANGELOG.md \
         | ensure grep -Pzo '##.*\n\n\K\X*?(?=\n##|$)' \
         | ensure tr '\0' '\n' \
         | ensure head -n1
     )
 
+    _body=$(
+        ensure cat CHANGELOG.md \
+        | ensure grep -Pzo '##.*\n\n\K\X*?(?=\n##|$)' \
+        | ensure tr '\0' '\n' \
+        | ensure sed '1d'
+    )
+
     _payload=$(
         jq --null-input \
-            --arg tag "$CIRCLE_TAG" \
-            --arg name "$CIRCLE_TAG" \
+            --arg tag "$_tagname" \
+            --arg name "$_title" \
             --arg body "$_body" \
             '{ tag_name: $tag, name: $name, body: $body, draft: false }'
     )
 
     _response=$(
-        curl -sSL -X POST "https://api.github.com/repos/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME/releases" \
+        curl -sSL -X POST "https://api.github.com/repos/openhab-nodes/ohx-os/releases" \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
@@ -91,7 +92,7 @@ main() {
         | ensure sed -e "s/{?name,label}//"
     )
 
-    for _file in /tmp/artifacts/*; do
+    for _file in target/releases/*; do
         local _basename
         local _mimetype
         local _response
@@ -116,12 +117,6 @@ main() {
             err "Artifact not uploaded: $_basename"
         fi
     done
-}
-
-circle() {
-    curl "${1}?circle-token=$CIRCLE_TOKEN" \
-        -sS --retry 3 \
-        -H "Accept: application/json"
 }
 
 say() {
