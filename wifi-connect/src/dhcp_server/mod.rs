@@ -87,7 +87,8 @@ impl DHCPServer {
     }
 
     pub async fn run(&mut self) -> Result<(), super::CaptivePortalError> {
-        let mut socket = tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
+        let mut socket =
+            tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
         socket
             .set_broadcast(true)
             .expect("Broadcast flag on udpsocket for dhcp server");
@@ -103,7 +104,8 @@ impl DHCPServer {
         let mut in_buf: [u8; 1500] = [0; 1500];
         loop {
             let future =
-                super::utils::receive_or_exit(&mut socket, &mut self.exit_receiver, &mut in_buf).await?;
+                super::utils::receive_or_exit(&mut socket, &mut self.exit_receiver, &mut in_buf)
+                    .await?;
             match future {
                 // Wait for either a received packet or the exit signal
                 Some((size, socket_addr)) => {
@@ -112,27 +114,27 @@ impl DHCPServer {
                         match p.message_type() {
                             Ok(options::MessageType::Discover) => {
                                 self.handle_discover(p, &mut sender, &mut socket).await?;
-                            }
+                            },
                             Ok(options::MessageType::Request) => {
                                 self.handle_request(p, &mut sender, &mut socket).await?;
-                            }
+                            },
                             Ok(options::MessageType::Release)
                             | Ok(options::MessageType::Decline) => {
                                 self.handle_release(p);
-                            }
-                            _ => {}
+                            },
+                            _ => {},
                         };
                     }
-                }
+                },
                 // Exit signal received
                 None => break,
             };
             #[cfg(tests)]
-                {
-                    if self.only_once {
-                        break;
-                    }
+            {
+                if self.only_once {
+                    break;
                 }
+            }
         }
 
         info!("Stopped dhcp server on {}", &self.server_addr);
@@ -238,7 +240,7 @@ impl DHCPServer {
                 sender,
                 socket,
             )
-                .await;
+            .await;
         }
 
         Ok(0)
@@ -262,7 +264,7 @@ impl DHCPServer {
                 } else {
                     [x[0], x[1], x[2], x[3]]
                 }
-            }
+            },
         };
         if !self.available(&in_packet.chaddr, &req_ip) {
             return reply(
@@ -273,7 +275,7 @@ impl DHCPServer {
                 sender,
                 socket,
             )
-                .await;
+            .await;
         }
         {
             self.leases.insert(
@@ -292,7 +294,7 @@ impl DHCPServer {
             sender,
             socket,
         )
-            .await
+        .await
     }
 
     fn handle_release(&mut self, in_packet: packet::Packet<'_>) {
@@ -570,7 +572,7 @@ mod tests {
         let r = rt.block_on(select(timeout, test));
         match r {
             Either::Left(_) => panic!("timeout"),
-            _ => {}
+            _ => {},
         };
     }
 }

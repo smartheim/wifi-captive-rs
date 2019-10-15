@@ -8,7 +8,11 @@
 extern crate log;
 
 mod errors;
-pub mod nm;
-pub mod utils;
+mod nm;
+mod utils;
 
-pub use errors::*;
+pub mod lib {
+    pub use super::nm::*;
+    pub use super::utils::*;
+}
+pub use errors::CaptivePortalError;

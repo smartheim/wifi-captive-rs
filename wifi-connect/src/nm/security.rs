@@ -107,8 +107,8 @@ pub fn credentials_from_data(
         "wep" => Ok(AccessPointCredentials::Wep {
             passphrase: passphrase.ok_or(CaptivePortalError::no_shared_key())?,
         }),
-        "none" => Ok(AccessPointCredentials::None),
-        _ => Err(CaptivePortalError::Generic("Expected an encryption mode")),
+        "open" | "none" | "" => Ok(AccessPointCredentials::None),
+        _ => Err(CaptivePortalError::GenericO(format!("Expected an encryption mode. Got: {}", &mode))),
     }
 }
 

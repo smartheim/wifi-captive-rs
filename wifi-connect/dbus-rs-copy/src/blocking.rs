@@ -178,6 +178,7 @@ impl<S: ReadAll, F: FnMut(S, &$c, &Message) -> bool $(+ $ss)* + 'static> MakeSig
 
 impl channel::MatchingReceiver for $c {
     type F = $cb;
+    type R = Box<dyn FnOnce(String, &Self) -> bool>;
     fn start_receive(&self, m: MatchRule<'static>, f: Self::F) -> u32 {
         self.filters_mut().add(m, f)
     }

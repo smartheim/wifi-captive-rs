@@ -12,14 +12,8 @@ and a DNS server for routing all pages to the captive portal.
 
 ## Table of Contents
 
-1. [Requirements and command line arguments](#requirements-and-command-line-arguments)
+1. [Usage](#usage)
 1. [How it works](#how-it-works)
-    1. [Advertise: Device Creates Access Point](#1.-device-creates-access-point)
-    1. [Connect: User Connects Phone to Device Access Point](#2.-user-connects-phone-to-device-access-point)
-    1. [Portal: Phone Shows Captive Portal to User](#3.-phone-shows-captive-portal-to-user)
-    1. [Credentials: User Enters Local WiFi Network Credentials on Phone](#4.-user-enters-local-wifi-network-credentials-on-phone)
-    1. [Connected: Device Connects to Local WiFi Network](#5.-device-connects-to-local-wifi-network)
-    1. [Connection Lost](#6.-connection-lost)
 1. [Not supported boards / dongles](#not-supported-boards-/-dongles)
 1. [Development, Get Involved](#development,-get-involved)
     1. [System ports](#system-ports)
@@ -28,15 +22,25 @@ and a DNS server for routing all pages to the captive portal.
     1. [Similar projects](#similar-projects)
 1. [FAQ](#faq)
 
-## Requirements and command line arguments
+## Usage
 
-Compile with `cargo build`. You need at least rust 1.39 or rust nightly after 2019.09.
+**Compile** with `cargo build`. You need at least rust 1.39 or rust nightly after 2019.09.
 
-Print available command line parameters with `./wifi-captive --help`.
-Command line options have environment variable counterparts.
-If both a command line option and its environment variable counterpart is defined,
+**Start** with `RUST_LOG=info cargo run -- -l 3000 -g 127.0.0.1 --dns-port 1535 --dhcp-port 6767`,
+which doesn't require any permissions. The hotspot gateway is 127.0.0.1,
+the http portal will be on http://127.0.0.1:3000, the dns server is on 1535,
+the dhcp server on 6767. Logging is controlled by the `RUST_LOG` env variable.
+It can be set to DEBUG, INFO, WARN, ERROR. Default is ERROR.
+
+### Command line options
+
+If both a command line option and an environment variable counterpart (identified by a leading $) is defined,
 the command line option will take higher precedence.
 
+*   **--help**
+
+    Print available command line parameters
+    
 *   **-d, --portal-dhcp-range** dhcp_range, **$PORTAL_DHCP_RANGE**
 
     DHCP range of the captive portal WiFi network
@@ -220,5 +224,8 @@ It forces the user to be root (UID=0) and uses `dnsmasq` for dns and dhcp-ip pro
   No. The user interface always shows the frequency of the selected access point
   and exactly that one is stored and used. 
 
+* **Does scanning work during hotspot mode?**
+  Many network chipsets do not support that. If a second / other wireless chipsets
+  are installed, those will be used instead for scanning.
 -----
  David Gräff, 2019

@@ -15,6 +15,9 @@
 
 #![warn(missing_docs)]
 
+#[macro_use]
+extern crate log;
+
 extern crate libc;
 
 #[allow(missing_docs)]

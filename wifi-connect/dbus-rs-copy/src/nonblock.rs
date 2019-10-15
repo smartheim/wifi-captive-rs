@@ -13,9 +13,9 @@ use crate::message::MatchRule;
 
 use std::sync::{Arc, Mutex};
 use std::{future, task, pin, mem};
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{HashMap, BTreeMap, VecDeque};
 use std::cell::{Cell, RefCell};
-use std::task::Waker;
+use std::task::{Waker, Context};
 
 mod generated_org_freedesktop_notifications;
 mod generated_org_freedesktop_dbus;
@@ -73,6 +73,7 @@ pub struct SyncConnection {
     waker: Mutex<Option<Waker>>,
     replies: Mutex<HashMap<u32, (Message, <Self as NonblockReply>::F)>>,
     filters: Mutex<(u32, BTreeMap<u32, (MatchRule<'static>, <Self as MatchingReceiver>::F)>)>,
+    drop: Mutex<VecDeque<(String, MethodReply<()>)>>,
 }
 
 impl AsRef<Channel> for SyncConnection {
@@ -86,6 +87,7 @@ impl From<Channel> for SyncConnection {
             waker: Mutex::new(None),
             replies: Default::default(),
             filters: Default::default(),
+            drop: Default::default(),
         }
     }
 }
@@ -94,7 +96,7 @@ impl Sender for SyncConnection {
     fn send(&self, msg: Message) -> Result<u32, ()> {
         let r = self.channel.send(msg);
         if let Ok(v) = &r {
-            println!("send {}", *v);
+            debug!("send {}", *v);
         }
         // try_lock: It doesn't matter if this method or a concurrent send schedules a wakeup
         if let Ok(mut v) = self.waker.try_lock() {
@@ -111,6 +113,7 @@ impl Sender for SyncConnection {
 pub trait NonblockReply {
     /// Callback type
     type F;
+    type R;
     /// Sends a message and calls the callback when a reply is received.
     fn send_with_reply(&self, msg: Message, f: Self::F) -> Result<u32, ()>;
     /// Cancels a pending reply.
@@ -121,6 +124,8 @@ pub trait NonblockReply {
 
 impl NonblockReply for LocalConnection {
     type F = Box<dyn FnOnce(Message, &LocalConnection)>;
+    // drop list: match_rule string + connection to call "remove_match"
+    type R = Box<dyn FnOnce(String, &SyncConnection) + Send>;
     fn send_with_reply(&self, msg: Message, f: Self::F) -> Result<u32, ()> {
         let r = self.channel.send(msg.clone()).map(|x| {
             self.replies.borrow_mut().insert(x, (msg, f));
@@ -137,6 +142,7 @@ impl NonblockReply for LocalConnection {
 
 impl MatchingReceiver for LocalConnection {
     type F = Box<dyn FnMut(Message, &LocalConnection) -> bool>;
+    type R = Box<dyn FnMut(Message, &LocalConnection) -> bool>;
     fn start_receive(&self, m: MatchRule<'static>, f: Self::F) -> u32 {
         let id = self.filter_nextid.get();
         self.filter_nextid.set(id + 1);
@@ -150,13 +156,15 @@ impl MatchingReceiver for LocalConnection {
 
 impl NonblockReply for SyncConnection {
     type F = Box<dyn FnOnce(Message, &SyncConnection) + Send>;
+    // drop list: match_rule string + connection to call "remove_match"
+    type R = Box<dyn FnOnce(String, &SyncConnection) + Send>;
     fn send_with_reply(&self, msg: Message, f: Self::F) -> Result<u32, ()> {
         let r = self.channel.send(msg.clone()).map(|x| {
             self.replies.lock().unwrap().insert(x, (msg, f));
             x
         });
         if let Ok(v) = &r {
-            println!("send with reply {}", *v);
+            debug!("send with reply {}", *v);
         }
         // try_lock: It doesn't matter if this method or a concurrent send schedules a wakeup
         if let Ok(mut v) = self.waker.try_lock() {
@@ -172,6 +180,7 @@ impl NonblockReply for SyncConnection {
 
 impl MatchingReceiver for SyncConnection {
     type F = Box<dyn FnMut(Message, &Self) -> bool + Send>;
+    type R = Box<dyn FnOnce(String, &Self) -> () + Send>;
     fn start_receive(&self, m: MatchRule<'static>, f: Self::F) -> u32 {
         let mut filters = self.filters.lock().unwrap();
         let id = filters.0 + 1;
@@ -181,7 +190,19 @@ impl MatchingReceiver for SyncConnection {
     }
     fn stop_receive(&self, id: u32) -> Option<(MatchRule<'static>, Self::F)> {
         let mut filters = self.filters.lock().unwrap();
-        filters.1.remove(&id)
+        let mr = filters.1.remove(&id);
+        if let Some((mr, old_f)) = mr {
+            let mut drop = self.drop.lock().unwrap();
+
+            let p = Proxy::new("org.freedesktop.DBus", "/", self.clone());
+            use stdintf::org_freedesktop_dbus::DBus;
+            let fut = p.remove_match(&mr.match_str());
+
+            drop.push_back((mr.match_str(), fut));
+            Some((mr, old_f))
+        } else {
+            None
+        }
     }
 }
 
@@ -197,7 +218,7 @@ pub trait Process: Sender + AsRef<Channel> {
         let c: &Channel = self.as_ref();
         while let Some(msg) = c.pop_message() {
             if let Some(v) = msg.get_reply_serial() {
-                println!("received {}", v);
+                debug!("received {}", v);
             }
             self.process_one(msg);
         }
@@ -209,19 +230,12 @@ pub trait Process: Sender + AsRef<Channel> {
     /// Sets the waker that will be used by [`send`] to schedule a dbus socket write.
     fn set_waker(&self, waker: Waker);
 
-    fn handle_timeout(&self);
+    fn drops(&self, ctx: &mut task::Context<'_>);
 }
 
 impl Process for LocalConnection {
     fn set_waker(&self, waker: Waker) {
         self.waker.replace(Some(waker));
-    }
-    fn handle_timeout(&self) {
-        let mut replies = self.replies.borrow_mut();
-        for (reply_id, (msg_waiting_reply, callback)) in replies.drain() {
-            let error_name: super::strings::ErrorName = "org.freedesktop.DBus.Error.NoReply".into();
-            callback(msg_waiting_reply.error(&error_name, &super::to_c_str("No response")), self);
-        }
     }
 
     fn process_one(&self, msg: Message) {
@@ -230,7 +244,7 @@ impl Process for LocalConnection {
                 callback(msg, self);
                 return;
             } else {
-                eprintln!("Got message with no registered reply {}", serial);
+                debug!("Got message with no registered reply {}", serial);
             }
         }
         let mut filters = self.filters.borrow_mut();
@@ -247,19 +261,16 @@ impl Process for LocalConnection {
             let _ = self.send(reply);
         }
     }
+
+    fn drops(&self, ctx: &mut Context<'_>) {
+        unimplemented!()
+    }
 }
 
 impl Process for SyncConnection {
     fn set_waker(&self, waker: Waker) {
         let mut m = self.waker.lock().unwrap();
         *m = Some(waker);
-    }
-    fn handle_timeout(&self) {
-        let mut replies = self.replies.lock().unwrap();
-        for (reply_id, (msg_waiting_reply, callback)) in replies.drain() {
-            let error_name: super::strings::ErrorName = "org.freedesktop.DBus.Error.NoReply".into();
-            callback(msg_waiting_reply.error(&error_name, &super::to_c_str("No response")), self);
-        }
     }
 
     fn process_one(&self, msg: Message) {
@@ -284,6 +295,24 @@ impl Process for SyncConnection {
         if let Some(reply) = crate::channel::default_reply(&msg) {
             let _ = self.send(reply);
         }
+    }
+
+    fn drops(&self, ctx: &mut Context<'_>) {
+        use std::future::Future;
+        use std::ops::Deref;
+
+        let mut drop = self.drop.lock().unwrap();
+        let mut a = drop.drain(..).filter_map(|(match_str, mut method_reply)| {
+            match unsafe { pin::Pin::new_unchecked(&mut method_reply) }.poll(ctx) {
+                task::Poll::Pending => Some((match_str, method_reply)),
+                task::Poll::Ready(_) => {
+                    info!("Drop stream complete - {}", match_str);
+                    None
+                }
+            }
+        }).collect();
+        drop.clear();
+        drop.append(&mut a);
     }
 }
 

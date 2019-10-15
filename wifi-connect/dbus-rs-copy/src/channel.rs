@@ -418,6 +418,7 @@ impl Sender for std::cell::RefCell<Vec<Message>> {
 pub trait MatchingReceiver {
     /// Type of callback
     type F;
+    type R;
     /// Add a callback to be called in case a message matches.
     ///
     /// Returns an id that can be used to remove the callback.

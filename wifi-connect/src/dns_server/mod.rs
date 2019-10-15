@@ -44,7 +44,8 @@ impl CaptiveDnsServer {
     }
 
     pub async fn run(&mut self) -> Result<(), CaptivePortalError> {
-        let mut socket = tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
+        let mut socket =
+            tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
         socket
             .set_broadcast(true)
             .expect("Set broadcast flag on udp socket");
@@ -53,9 +54,12 @@ impl CaptiveDnsServer {
 
         let mut req_buffer = BytePacketBuffer::new();
         loop {
-            let future =
-                super::utils::receive_or_exit(&mut socket, &mut self.exit_receiver, &mut req_buffer.buf)
-                    .await?;
+            let future = super::utils::receive_or_exit(
+                &mut socket,
+                &mut self.exit_receiver,
+                &mut req_buffer.buf,
+            )
+            .await?;
             match future {
                 // Wait for either a received packet or the exit signal
                 Some((size, socket_addr)) => {
@@ -63,16 +67,16 @@ impl CaptiveDnsServer {
                     if let Ok(p) = DnsPacket::from_buffer(&mut req_buffer) {
                         handle_request(&self, p, socket_addr, &mut req_buffer, &mut socket).await?;
                     }
-                }
+                },
                 // Exit signal received
                 None => break,
             };
             #[cfg(tests)]
-                {
-                    if self.only_once {
-                        break;
-                    }
+            {
+                if self.only_once {
+                    break;
                 }
+            }
         }
 
         drop(socket);
@@ -151,7 +155,7 @@ mod tests {
 
         let mut req_buffer = BytePacketBuffer::new();
         req_buffer.reset_for_write();
-        packet.write(&mut req_buffer).unwrap();
+        packet.write(&mut req_buffer)?;
         socket
             .send_to(&req_buffer.buf[0..req_buffer.pos], server)
             .await?;
@@ -171,15 +175,15 @@ mod tests {
         let server = dns_server.run();
         let lookup = async move {
             let r = lookup("www.google.com", QueryType::A, SocketAddr::V4(socket_addr)).await?;
-            let r = r.answers.get(0).unwrap();
+            let r = unsafe { r.answers.get_unchecked(0) };
             match r {
                 DnsRecord::A { domain, addr, ttl } => {
                     assert_eq!(&domain as &str, "www.google.com");
                     assert_eq!(&addr, &socket_addr.ip());
                     assert_eq!(*ttl, 360);
-                    exit_handler.send(()).unwrap();
+                    let _ = exit_handler.send(());
                     Ok(())
-                }
+                },
                 _ => Err(CaptivePortalError::Generic("Unexpected response")),
             }
         };
@@ -191,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_domain() {
-        let rt = Runtime::new().unwrap();
+        let rt = Runtime::new().expect("Test runtime");
 
         let timeout = tokio_timer::delay_for(Duration::from_secs(2));
         pin_mut!(timeout);
@@ -201,7 +205,7 @@ mod tests {
         let r = rt.block_on(select(timeout, test));
         match r {
             Either::Left(_) => panic!("timeout"),
-            _ => {}
+            _ => {},
         };
     }
 }

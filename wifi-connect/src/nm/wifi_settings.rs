@@ -183,7 +183,7 @@ pub fn prepare_wifi_security_settings<
             );
 
             settings.insert("802-11-wireless-security".into(), security_settings);
-        },
+        }
         AccessPointCredentials::Wpa { ref passphrase } => {
             let mut security_settings: VariantMap = HashMap::new();
 
@@ -195,7 +195,7 @@ pub fn prepare_wifi_security_settings<
             );
 
             settings.insert("802-11-wireless-security".into(), security_settings);
-        },
+        }
         AccessPointCredentials::Enterprise {
             ref identity,
             ref passphrase,
@@ -212,8 +212,8 @@ pub fn prepare_wifi_security_settings<
 
             settings.insert("802-11-wireless-security".into(), security_settings);
             settings.insert("802-1x".into(), eap);
-        },
-        AccessPointCredentials::None => {},
+        }
+        AccessPointCredentials::None => {}
     };
     Ok(())
 }
@@ -233,18 +233,26 @@ pub fn extract_vector(key: &str, map: &HashMap<String, Variant<Box<dyn RefArg>>>
                     Some(v) => Some(v.to_owned()),
                     None => None,
                 })
-                .collect(),
+                    .collect(),
             )
         })
         .unwrap_or_default()
 }
 
-/// Return a wifi connection settings object if the given connection is a wifi connection and None otherwise.
+/// Return a wifi connection settings object if the given connection (or active connection) is a wifi connection and None otherwise.
 pub async fn get_connection_settings(
     conn: Arc<SyncConnection>,
     connection_path: dbus::Path<'_>,
 ) -> Result<Option<WiFiConnectionSettings>, CaptivePortalError> {
-    let p = nonblock::Proxy::new(NM_BUSNAME, connection_path, conn.clone());
+    // The api consumer might hand us an active connection instead of a regular one. If so, determine the connection path
+    // and overwrite the proxy.
+    let mut p = nonblock::Proxy::new(NM_BUSNAME, connection_path.clone(), conn.clone());
+    if connection_path.clone().to_string().contains("ActiveConnection") {
+        use super::generated::connection_active::ConnectionActive;
+        let path = p.connection().await?;
+        p = nonblock::Proxy::new(NM_BUSNAME, path, conn.clone());
+    };
+
     use super::generated::connection_nm::Connection;
 
     let dict = p.get_settings().await?;
@@ -267,8 +275,8 @@ pub async fn get_connection_settings(
             return Err(CaptivePortalError::GenericO(format!(
                 "Wifi device mode not recognised: {}",
                 s
-            )))
-        },
+            )));
+        }
     };
 
     Ok(Some(WiFiConnectionSettings {
@@ -283,18 +291,18 @@ pub async fn get_connection_settings(
 /// Dbus library helper type
 pub(crate) type VariantMap = HashMap<&'static str, Variant<Box<dyn RefArg>>>;
 pub(crate) type VariantMapNested =
-    HashMap<&'static str, HashMap<&'static str, Variant<Box<dyn RefArg>>>>;
+HashMap<&'static str, HashMap<&'static str, Variant<Box<dyn RefArg>>>>;
 
 pub fn add_val<V>(map: &mut VariantMap, key: &'static str, value: V)
-where
-    V: RefArg + 'static,
+    where
+        V: RefArg + 'static,
 {
     map.insert(key, Variant(Box::new(value)));
 }
 
 pub fn add_str<V>(map: &mut VariantMap, key: &'static str, value: V)
-where
-    V: Into<String>,
+    where
+        V: Into<String>,
 {
     map.insert(key, Variant(Box::new(value.into())));
 }

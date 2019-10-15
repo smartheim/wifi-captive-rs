@@ -11,8 +11,6 @@ use dbus::Error;
 use std::sync::{Arc, Mutex};
 use std::{future, pin, task};
 
-use tokio::spawn;
-
 use dbus::message::{MatchRule, SignalArgs};
 use futures_core::Poll;
 use std::collections::VecDeque;
@@ -61,6 +59,8 @@ impl<C: AsRef<Channel> + Process> IOResource<C> {
             //println!("flush");
         }
 
+        self.connection.drops(ctx);
+
         Ok(())
     }
 }
@@ -107,6 +107,13 @@ pub fn new_system_sync() -> Result<(IOResource<SyncConnection>, Arc<SyncConnecti
     new(BusType::System)
 }
 
+use lazy_static::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+lazy_static! {
+    static ref GLOBAL: AtomicUsize = AtomicUsize::new(1);
+}
+
 struct SignalStreamState<U, T> {
     signal_queue: VecDeque<dbus::Message>,
     waker: Option<Waker>,
@@ -118,14 +125,14 @@ struct SignalStreamState<U, T> {
 /// over the connections *start_receive* and *stop_receive* method.
 pub struct SignalStream<U, T> {
     connection: Arc<SyncConnection>,
-    match_str: String,
     rule_handler: u32,
     state: Arc<Mutex<SignalStreamState<U, T>>>,
+    stream_id: usize,
 }
 
 impl<U: SignalArgs + 'static, T: Sized + 'static> Stream for SignalStream<U, T>
-where
-    U: dbus::arg::ReadAll,
+    where
+        U: dbus::arg::ReadAll,
 {
     type Item = (T, String);
     fn poll_next(self: Pin<&mut Self>, ctx: &mut task::Context) -> task::Poll<Option<Self::Item>> {
@@ -183,11 +190,13 @@ impl<U: SignalArgs + 'static, T: Sized + 'static> SignalStream<U, T> {
             }),
         );
 
+        let stream_id = GLOBAL.fetch_add(1, Ordering::SeqCst);
+        info!("Create stream {} - {} ...", stream_id, &match_str);
         Ok(SignalStream {
             connection,
-            match_str,
             rule_handler,
             state,
+            stream_id,
         })
     }
 }
@@ -196,7 +205,6 @@ impl<U: SignalArgs + 'static, T: Sized + 'static> SignalStream<U, T> {
 /// of this match_rule.
 impl<U, T> Drop for SignalStream<U, T> {
     fn drop(&mut self) {
-        self.connection.stop_receive(self.rule_handler);
         self.rule_handler = 0;
         {
             let mut state = self
@@ -205,12 +213,9 @@ impl<U, T> Drop for SignalStream<U, T> {
                 .expect("Unlock mutex stream state in Drop");
             state.done = true;
         }
-        let match_str = self.match_str.clone();
-        let connection = self.connection.clone();
-        spawn(async move {
-            let p = dbus::nonblock::Proxy::new("org.freedesktop.DBus", "/", connection);
-            use dbus::nonblock::stdintf::org_freedesktop_dbus::DBus;
-            let _ = p.remove_match(&match_str).await;
-        });
+        let stream_id = self.stream_id;
+        self.connection.stop_receive(self.rule_handler);
+
+        info!("Drop stream {}...", stream_id);
     }
 }

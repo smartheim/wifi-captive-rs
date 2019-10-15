@@ -18,7 +18,7 @@ use futures_util::future::Either;
 use futures_util::try_future::try_select;
 use serde::Deserialize;
 
-use crate::nm::{NetworkManagerEvent, WifiConnectionEvent, WifiConnections};
+use super::nm::{NetworkManager, NetworkManagerEvent, WifiConnectionEvent, WifiConnections};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -52,7 +52,7 @@ pub struct HttpServerState {
     pub connections: WifiConnections,
     pub server_addr: SocketAddrV4,
     pub sse: sse::Clients,
-    pub network_manager: crate::nm::NetworkManager,
+    pub network_manager: NetworkManager,
 }
 
 /// The thread safe wrapper around the http server state.
@@ -63,7 +63,10 @@ pub type HttpServerStateSync = Arc<Mutex<HttpServerState>>;
 /// ## Crossmodule usage
 /// This method calls into the network manager
 pub async fn user_requests_wifi_list_refresh(state: HttpServerStateSync) -> StatusCode {
-    let nm = state.lock().unwrap().network_manager.clone();
+    let nm = match state.try_lock() {
+        Ok(state) => state.network_manager.clone(),
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR,
+    };
     if let Ok(_) = nm.scan_networks().await {
         StatusCode::OK
     } else {
@@ -86,19 +89,17 @@ async fn http_router(
 
     if req.method() == Method::GET {
         if req.uri().path() == "/networks" {
-            let state = state.lock().unwrap();
+            let state = state.lock().expect("http state mutex lock");
             let data = serde_json::to_string(&state.connections)?;
             drop(state); // release mutex
-            response.headers_mut().append(
-                "Content-Type",
-                HeaderValue::from_str("application/json").unwrap(),
-            );
+            response
+                .headers_mut()
+                .append("content-type", HeaderValue::from_static("application/json"));
             *response.body_mut() = Body::from(data);
             return Ok(response);
         } else if req.uri().path() == "/events" {
-            let mut state = state.lock().unwrap();
+            let mut state = state.lock().expect("http state mutex lock");
             let result = sse::create_stream(&mut state.sse, src.ip());
-            info!("clients {}", state.sse.len());
             return Ok(result);
         } else if req.uri().path() == "/refresh" {
             *response.status_mut() = user_requests_wifi_list_refresh(state.clone()).await;
@@ -108,6 +109,7 @@ async fn http_router(
         return file_serve::serve_file(&ui_path, response, &req, &state);
     }
     if req.method() == Method::POST && req.uri().path() == "/connect" {
+        info!("connect1");
         // Body is a stream of chunks of bytes.
         let mut body = req.into_body();
         let mut output = Vec::new();
@@ -116,14 +118,21 @@ async fn http_router(
             let bytes = chunk?.into_bytes();
             output.extend(&bytes[..]);
         }
+        info!("connect2");
         let parsed: WifiConnectionRequest = serde_json::from_slice(&output[..])?;
-        // unlock mutex as soon as possible
-        let mut state = state.lock().unwrap();
-        let sender = state.connection_sender.take().unwrap();
-        drop(state); // release mutex
+        let mut state = state.lock().expect("http state mutex lock");
+        let sender = state
+            .connection_sender
+            .take()
+            .expect("http state mutex lock");
+        // release mutex as soon as possible
+        drop(state);
+        info!("connect3");
         sender
             .send(Some(parsed))
             .map_err(|_| CaptivePortalError::Generic("Failed to internally route data"))?;
+        *response.status_mut() = StatusCode::OK;
+        info!("connect4");
         return Ok(response);
     }
 
@@ -156,7 +165,7 @@ impl HttpServer {
     /// A tuple (http_server, exit handler) is returned. Call the exit handler for a graceful shutdown.
     pub fn new(
         server_addr: SocketAddrV4,
-        nm: crate::nm::NetworkManager,
+        nm: NetworkManager,
         ui_path: PathBuf,
     ) -> (HttpServer, tokio::sync::oneshot::Sender<()>) {
         let (tx, exit_handler) = tokio::sync::oneshot::channel::<()>();
@@ -233,12 +242,12 @@ impl HttpServer {
                     // Exit handler called
                     break;
                 }
-                let mut state = state_for_ping.lock().unwrap();
+                let mut state = state_for_ping.lock().expect("http state mutex lock");
                 sse::ping(&mut state.sse);
             }
             // After the not-so-endless loop finished: Close all server-send-event connections.
             // Without closing them, the graceful shutdown future would never resolve.
-            let mut state = state_for_ping.lock().unwrap();
+            let mut state = state_for_ping.lock().expect("http state mutex lock");
             sse::close_all(&mut state.sse);
         });
 
@@ -247,27 +256,30 @@ impl HttpServer {
             // request by the user.
             let r = try_select(exit_handler, connection_receiver).await;
 
-            let r = match r {
-                Err(e) => {
-                    warn!("try_select failed with {:?}", e);
+            match r {
+                Err(_) => {
+                    // The http exit handler has been dropped. Time to leave this future.
                     return;
                 },
-                Ok(v) => v,
-            };
-            // select/try_select return an Either. If it's the right side of the Either (received connection),
-            // we extract that connection and assign it to the GracefulShutdownState.
-            // That object is a thread safe requested-connection wrapper and our way of communicating
-            // a state out of this future.
-            match r {
-                Either::Right(f) => {
-                    let mut shutdown_state = graceful_shutdown_state_clone
-                        .lock()
-                        .expect("Mutex lock for http server state on graceful shutdown");
-                    *shutdown_state = f.0;
-                    info!("Received connect state {:?}", *shutdown_state);
+                Ok(r) => {
+                    // select/try_select return an Either. If it's the right side of the Either (received connection),
+                    // we extract that connection and assign it to the GracefulShutdownState.
+                    // That object is a thread safe requested-connection wrapper and our way of communicating
+                    // a state out of this future.
+                    match r {
+                        Either::Right((f, _receiver)) => {
+                            let mut shutdown_state = graceful_shutdown_state_clone
+                                .lock()
+                                .expect("Mutex lock for http server state on graceful shutdown");
+                            *shutdown_state = f;
+                            info!("Received connect state {:?}", *shutdown_state);
+                        },
+                        // The http exit handler has been been activated. Time to leave this future.
+                        _ => (),
+                    };
                 },
-                _ => (),
-            };
+            }
+
             // Stop server-send-events keep alive and refresh request future
             let _ = keep_alive_exit.send(());
             ()

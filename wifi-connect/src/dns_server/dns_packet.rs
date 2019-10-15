@@ -1,7 +1,5 @@
 //! A DNS Packet (which contains DNS Records and a DNS Header) and its encoding and decoding
 
-use std::io::Result;
-
 use super::byte_buffer::BytePacketBuffer;
 use super::dns_header::DnsHeader;
 use super::dns_query::{DnsQuery, QueryType};
@@ -27,7 +25,7 @@ impl DnsPacket {
         }
     }
 
-    pub fn from_buffer(buffer: &mut BytePacketBuffer) -> Result<DnsPacket> {
+    pub fn from_buffer(buffer: &mut BytePacketBuffer) -> Result<DnsPacket, std::io::Error> {
         let mut result = DnsPacket::new();
         result.header.read(buffer)?;
 
@@ -53,7 +51,7 @@ impl DnsPacket {
         Ok(result)
     }
 
-    pub fn write(&mut self, buffer: &mut BytePacketBuffer) -> Result<()> {
+    pub fn write(&mut self, buffer: &mut BytePacketBuffer) -> Result<(), std::io::Error> {
         self.header.questions = self.questions.len() as u16;
         self.header.answers = self.answers.len() as u16;
         self.header.authoritative_entries = self.authorities.len() as u16;

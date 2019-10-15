@@ -6,15 +6,23 @@ const ssid_input = document.getElementById("ssid");
 const passphrase_input = document.getElementById("passphrase");
 const hw_input = document.getElementById("hw"); // wifi hw -> used as unique id
 const submit_button = document.getElementById('submit_btn');
+const refresh_button = document.getElementById("refresh_button");
+const refresh_text = document.getElementById("refresh_text");
+const input_mode = document.getElementById("mode");
+const identity_input = document.getElementById("identity");
+
+refresh_button.addEventListener("click", handle_refresh_button);
 
 // Enable the submit button if a SSID (or ssid+password) is entered.
 // The password must be optional to accommodate the case of an open wifi.
 ssid_input.addEventListener("input", ev => {
     submit_button.disabled = ev.target.value.length === 0;
+    if (!input_mode.value) input_mode.value = ssid_input.value.length > 0 ? "wpa" : "open";
     unselect_entry();
 });
 passphrase_input.addEventListener("input", ev => {
     submit_button.disabled = ssid_input.value.length === 0 || passphrase_input.value.length === 0;
+    if (!input_mode.value || input_mode.value === "open") input_mode.value = "wpa";
 });
 
 /**
@@ -24,6 +32,7 @@ passphrase_input.addEventListener("input", ev => {
 function unselect_entry() {
     document.querySelectorAll(".target_link").forEach(e => delete e.dataset.selected);
     hw_input.value = "";
+    input_mode.value = "open";
 }
 
 /**
@@ -49,6 +58,7 @@ function entrySelected(selected, network) {
         document.querySelector('#passphrase').classList.add("hide");
     }
 
+    input_mode.value = network.security;
     ssid_input.value = network.ssid;
     hw_input.value = network.hw;
     passphrase_input.focus();
@@ -152,6 +162,17 @@ async function get_networks() {
     }
 
     document.querySelector('#choose_wifi').classList.remove('hide');
+    refresh_button.disabled = false;
+    refresh_text.innerText = "Automatic refresh enabled";
+
+    fetch("/refresh").then(v => {
+        if (!v.ok) throw Error("Server error " + v.status)
+    }).catch(err => {
+        refresh_button.disabled = true;
+        refresh_text.innerText = "Manual refresh not available";
+        console.log("Failed to refresh", err);
+    });
+
 
     let response = await fetch("/networks");
     if (!response.ok) {
@@ -167,13 +188,10 @@ get_networks()
         const evtSource = new EventSource("/events");
 
         evtSource.addEventListener("List", async event => {
-            await connection_reestablished();
             receive_list_of_networks(JSON.parse(event.data));
         });
 
         evtSource.addEventListener("Added", async event => {
-            await connection_reestablished();
-
             let event_data = JSON.parse(event.data);
             let id = "ssid_" + event_data.hw.replace(":", "_");
             console.log("Wifi added/updated", event_data);
@@ -181,8 +199,6 @@ get_networks()
         });
 
         evtSource.addEventListener("Removed", async event => {
-            await connection_reestablished();
-
             let event_data = JSON.parse(event.data);
             let el = document.querySelector("#ssid_" + event_data.hw.replace(":", "_"));
             if (el) el.remove();
@@ -190,6 +206,7 @@ get_networks()
         });
         // Display an error message if connection lost
         evtSource.onerror = connection_lost;
+        evtSource.onopen = connection_reestablished;
 
         window.addEventListener('offline', () => {
             document.getElementById("content-offline").classList.remove("hide");
@@ -228,8 +245,6 @@ function handle_refresh_button(ev) {
     setTimeout(get_networks, 500);
 }
 
-document.getElementById("refresh_button").addEventListener("click", handle_refresh_button);
-
 /// Handle the form submit
 let form = document.querySelector('form');
 form.addEventListener("submit", ev => {
@@ -246,7 +261,12 @@ form.addEventListener("submit", ev => {
     });
     const json = JSON.stringify(object);
 
-    fetch("/connect", {method: 'POST', body: json}).then(() => {
+    fetch("/connect", {
+        method: 'POST', headers: {
+            'Content-Type': 'application/json'
+        }, body: json
+    }).then(v => {
+        if (!v.ok) throw Error("Server error " + v.status);
     }).catch(err => {
         document.querySelector('#applying').classList.add('hide');
         get_networks().catch(e => console.error("Failed to fetch", e));

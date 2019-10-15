@@ -70,8 +70,7 @@ pub struct Config {
     #[structopt(short, long)]
     pub quit_after_connected: bool,
 
-    /// Require internet connectivity to deem a connection successful.
-    /// Usually it is sufficient if a connection to the local network can be established.
+    /// Require internet connectivity to deem a connection successful. Usually it is sufficient if a connection to the local network can be established.
     #[structopt(long)]
     pub internet_connectivity: bool,
 

@@ -1,12 +1,18 @@
-use super::errors::CaptivePortalError;
+use super::CaptivePortalError;
 use ascii::AsciiStr;
 
 use futures_util::future::Either;
+use futures_util::stream::Stream;
 use futures_util::try_future::try_select;
 use futures_util::StreamExt;
 use pin_utils::pin_mut;
+use std::future::Future;
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::{self, Poll};
 use std::time::Duration;
+use tokio::timer::Delay;
+use tokio_net::signal::CtrlC;
 use tokio_net::udp::UdpSocket;
 
 /// A wifi password set by this service can only contain ASCII characters. Just to be sure.
@@ -97,24 +103,128 @@ where
         },
     }
 
+    info!("SIGKILL: Graceful shutdown initialized ...");
     Ok(None)
 }
 
-/// Wraps the given future with a timeout. Returns None if the timeout happened before the given
-/// future resolved and Some(return_value) otherwise.
-pub async fn timed_future<F, R>(connect_future: F, duration: Duration) -> Option<R>
-where
-    F: std::future::Future<Output = R>,
-    R: Sized,
-{
-    let timed_future = tokio_timer::delay_for(duration);
-    pin_utils::pin_mut!(timed_future);
-    pin_utils::pin_mut!(connect_future);
-
-    let r = futures_util::future::select(connect_future, timed_future).await;
-    if let Either::Left((v, _)) = r {
-        return Some(v);
-    }
-
-    None
+pub struct CtrlCSignal<T> {
+    value: T,
+    sig: CtrlC,
+    exit_handler: Option<tokio::sync::oneshot::Sender<()>>,
 }
+
+impl<T: Future> CtrlCSignal<T> {
+    pub fn new(value: T, exit_handler: tokio::sync::oneshot::Sender<()>) -> CtrlCSignal<T> {
+        let sig = tokio_net::signal::ctrl_c().expect("Ctrl+C signal handler");
+        CtrlCSignal {
+            value,
+            sig,
+            exit_handler: Some(exit_handler),
+        }
+    }
+}
+
+impl<T: Future> Future for CtrlCSignal<T> {
+    type Output = T::Output;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
+        // First, try polling the future
+
+        // Safety: we never move `self.value`
+        let p = unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.value) };
+        if let Poll::Ready(v) = p.poll(cx) {
+            return Poll::Ready(v);
+        }
+
+        // Now check the timer and call the exit handler if necessary
+        // Safety: X_X!
+        if self.exit_handler.is_some() {
+            let sig = unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.sig) };
+            if let Poll::Ready(option) = sig.poll_next(cx) {
+                if let Some(_) = option {
+                    let mut exit_handler_option =
+                        unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.exit_handler) };
+                    // unwrap is safe, because of wrapping is_some.
+                    let _ = exit_handler_option.take().unwrap().send(());
+                }
+            }
+        }
+        Poll::Pending
+    }
+}
+
+pub trait FutureWithSignalCancel: Future {
+    fn ctrl_c(self, exit_handler: tokio::sync::oneshot::Sender<()>) -> CtrlCSignal<Self>
+    where
+        Self: Sized,
+    {
+        CtrlCSignal::new(self, exit_handler)
+    }
+}
+
+impl<T: ?Sized> FutureWithSignalCancel for T where T: Future {}
+
+/// A timeout future that calls the given exit handler on a timeout and drives the inner future to completion.
+pub struct Timeout<T, DROP> {
+    value: T,
+    delay: Delay,
+    exit_handler: Option<DROP>,
+}
+
+//impl<T: Future, DROP: Sized> Timeout<T, DROP> {
+/// Triggers an early timeout
+//    pub fn trigger_timeout(mut self: Pin<&mut Self>) -> Pin<&mut Self> {
+//        unsafe {
+//            self.as_mut().map_unchecked_mut(|me| {
+//                let _ = me.exit_handler.take();
+//                &mut me.exit_handler
+//            })
+//        };
+//        self
+//    }
+//}
+
+impl<T: Future, DROP: Sized> Future for Timeout<T, DROP> {
+    type Output = T::Output;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
+        // First, try polling the future
+
+        // Safety: we never move `self.value`
+        let p = unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.value) };
+        if let Poll::Ready(v) = p.poll(cx) {
+            return Poll::Ready(v);
+        }
+
+        // Now check the timer and call the exit handler if necessary
+        // Safety: X_X!
+        if self.exit_handler.is_some() {
+            let delay = unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.delay) };
+            if let Poll::Ready(()) = delay.poll(cx) {
+                unsafe {
+                    self.as_mut().map_unchecked_mut(|me| {
+                        me.exit_handler.take();
+                        &mut me.exit_handler
+                    });
+                }
+            }
+        }
+        Poll::Pending
+    }
+}
+
+pub trait FutureWithTimeout: Future {
+    fn timeout<DROP: Sized>(self, timeout: Duration, exit_handler: DROP) -> Timeout<Self, DROP>
+    where
+        Self: Sized,
+    {
+        let delay = tokio_timer::delay_for(timeout);
+        Timeout {
+            value: self,
+            delay,
+            exit_handler: Some(exit_handler),
+        }
+    }
+}
+
+impl<T: ?Sized> FutureWithTimeout for T where T: Future {}
