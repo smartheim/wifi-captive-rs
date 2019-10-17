@@ -9,13 +9,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: shared::Config = shared::Config::from_args();
 
     let manager = NetworkManager::new(&config.interface).await?;
-    manager
+    let state = manager
         .connect_to(
             config.ssid,
-            None,
             credentials_from_data(config.passphrase, None, "wpa")?,
+            None,
+            true
         )
         .await?;
+
+    match state {
+        Some(_) => println!("Connected"),
+        None => println!("Connection failed")
+    }
 
     Ok(())
 }

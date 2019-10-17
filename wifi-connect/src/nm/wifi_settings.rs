@@ -140,8 +140,9 @@ pub(crate) fn make_options_for_ap() -> HashMap<&'static str, Variant<Box<dyn Ref
 }
 
 pub(crate) fn make_arguments_for_ap<T: Eq + std::hash::Hash + std::convert::From<&'static str>>(
-    ssid: SSID,
+    ssid: &SSID,
     credentials: security::AccessPointCredentials,
+    old_connection: Option<WiFiConnectionSettings>,
 ) -> Result<HashMap<T, VariantMap>, CaptivePortalError> {
     let mut settings: HashMap<T, VariantMap> = HashMap::new();
 
@@ -152,6 +153,10 @@ pub(crate) fn make_arguments_for_ap<T: Eq + std::hash::Hash + std::convert::From
     let mut connection: VariantMap = HashMap::new();
     // See https://developer.gnome.org/NetworkManager/stable/nm-settings.html
     add_val(&mut connection, "autoconnect", true);
+    if let Some(old_connection) = old_connection {
+        add_val(&mut connection, "id", old_connection.id);
+        add_val(&mut connection, "uuid", old_connection.uuid);
+    }
     settings.insert("connection".into(), connection);
 
     prepare_wifi_security_settings(&credentials, &mut settings)?;
@@ -224,6 +229,20 @@ pub fn extract(key: &str, map: &HashMap<String, Variant<Box<dyn RefArg>>>) -> St
         .unwrap_or_default()
 }
 
+pub fn extract_bytes(key: &str, map: &HashMap<String, Variant<Box<dyn RefArg>>>) -> Vec<u8> {
+    map.get(key)
+        .and_then(|v| v.0.as_iter())
+        .and_then(|v| {
+            Some(
+                v.filter_map(|v| match v.as_u64() {
+                    Some(v) => Some(v as u8),
+                    None => None,
+                }).collect(),
+            )
+        })
+        .unwrap_or_default()
+}
+
 pub fn extract_vector(key: &str, map: &HashMap<String, Variant<Box<dyn RefArg>>>) -> Vec<String> {
     map.get(key)
         .and_then(|v| v.0.as_iter())
@@ -232,8 +251,7 @@ pub fn extract_vector(key: &str, map: &HashMap<String, Variant<Box<dyn RefArg>>>
                 v.filter_map(|v| match v.as_str() {
                     Some(v) => Some(v.to_owned()),
                     None => None,
-                })
-                    .collect(),
+                }).collect(),
             )
         })
         .unwrap_or_default()
@@ -272,17 +290,17 @@ pub async fn get_connection_settings(
         "ap" => WifiConnectionMode::AP,
         "infrastructure" => WifiConnectionMode::Infrastructure,
         s => {
-            return Err(CaptivePortalError::GenericO(format!(
-                "Wifi device mode not recognised: {}",
-                s
-            )));
+            warn!("Wifi connection setting without known mode found: {}. Assuming infrastructure.", s);
+            WifiConnectionMode::Infrastructure
         }
     };
+
+    let d = extract_bytes("ssid", &wireless_settings);
 
     Ok(Some(WiFiConnectionSettings {
         id: extract("id", &connection_settings),
         uuid: extract("uuid", &connection_settings),
-        ssid: extract("ssid", &wireless_settings),
+        ssid: String::from_utf8(d)?,
         mode,
         seen_bssids: extract_vector("seen-bssids", &wireless_settings),
     }))

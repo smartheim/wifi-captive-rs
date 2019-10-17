@@ -35,7 +35,7 @@ pub(crate) fn verify_ascii_password(password: String) -> Result<String, CaptiveP
             } else {
                 Ok(password)
             }
-        },
+        }
     }
 }
 
@@ -61,7 +61,7 @@ pub async fn receive_or_exit(
             } else {
                 Ok(None)
             }
-        },
+        }
         Err(e) => match e {
             Either::Left((e, _)) => Err(CaptivePortalError::IO(e)),
             // Server exit handler dropped
@@ -73,16 +73,16 @@ pub async fn receive_or_exit(
 /// Wraps the given future with a ctrl+c signal listener. Returns None if the signal got caught
 /// and Some(return_value) otherwise.
 pub async fn ctrl_c_or_future<F, R>(connect_future: F) -> Result<Option<R>, CaptivePortalError>
-where
-    F: std::future::Future<Output = Result<R, CaptivePortalError>>,
-    R: Sized,
+    where
+        F: std::future::Future<Output=Result<R, CaptivePortalError>>,
+        R: Sized,
 {
     let ctrl_c = async move {
         match tokio_net::signal::ctrl_c() {
             Ok(mut v) => {
                 v.next().await;
                 Ok(())
-            },
+            }
             Err(_) => Err(CaptivePortalError::Generic("signal::ctrl_c() failed")),
         }
     };
@@ -95,12 +95,12 @@ where
             if let Either::Left((e, _)) = e {
                 return Err(e);
             }
-        },
+        }
         Ok(v) => {
             if let Either::Left((v, _)) = v {
                 return Ok(Some(v));
             }
-        },
+        }
     }
 
     info!("SIGKILL: Graceful shutdown initialized ...");
@@ -111,21 +111,23 @@ pub struct CtrlCSignal<T> {
     value: T,
     sig: CtrlC,
     exit_handler: Option<tokio::sync::oneshot::Sender<()>>,
+    done: bool,
 }
 
 impl<T: Future> CtrlCSignal<T> {
-    pub fn new(value: T, exit_handler: tokio::sync::oneshot::Sender<()>) -> CtrlCSignal<T> {
+    pub fn new(value: T, exit_handler: Option<tokio::sync::oneshot::Sender<()>>) -> CtrlCSignal<T> {
         let sig = tokio_net::signal::ctrl_c().expect("Ctrl+C signal handler");
         CtrlCSignal {
             value,
             sig,
-            exit_handler: Some(exit_handler),
+            exit_handler,
+            done: false,
         }
     }
 }
 
 impl<T: Future> Future for CtrlCSignal<T> {
-    type Output = T::Output;
+    type Output = Option<T::Output>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         // First, try polling the future
@@ -133,19 +135,29 @@ impl<T: Future> Future for CtrlCSignal<T> {
         // Safety: we never move `self.value`
         let p = unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.value) };
         if let Poll::Ready(v) = p.poll(cx) {
-            return Poll::Ready(v);
+            return match self.done {
+                true => Poll::Ready(None),
+                false => Poll::Ready(Some(v))
+            };
         }
 
         // Now check the timer and call the exit handler if necessary
-        // Safety: X_X!
-        if self.exit_handler.is_some() {
+        if !self.done {
+            // Safety: X_X!
             let sig = unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.sig) };
             if let Poll::Ready(option) = sig.poll_next(cx) {
                 if let Some(_) = option {
                     let mut exit_handler_option =
                         unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.exit_handler) };
-                    // unwrap is safe, because of wrapping is_some.
-                    let _ = exit_handler_option.take().unwrap().send(());
+                    // The exit handler is not required, but if available call it.
+                    if let Some(exit_handler) = exit_handler_option.take() {
+                        let _ = exit_handler.send(());
+                        // From here on we do not poll the signal future anymore and only drive the wrapped
+                        // future to completion.
+                        unsafe { self.as_mut().get_unchecked_mut().done = true; };
+                    } else {
+                        return Poll::Ready(None);
+                    }
                 }
             }
         }
@@ -154,11 +166,19 @@ impl<T: Future> Future for CtrlCSignal<T> {
 }
 
 pub trait FutureWithSignalCancel: Future {
-    fn ctrl_c(self, exit_handler: tokio::sync::oneshot::Sender<()>) -> CtrlCSignal<Self>
-    where
-        Self: Sized,
+    /// Wait for a ctrl+c signal. If that happens call the given exit handler and drive the
+    /// inner future to completion.
+    fn ctrl_c_exit(self, exit_handler: tokio::sync::oneshot::Sender<()>) -> CtrlCSignal<Self>
+        where
+            Self: Sized,
     {
-        CtrlCSignal::new(self, exit_handler)
+        CtrlCSignal::new(self, Some(exit_handler))
+    }
+    fn ctrl_c(self) -> CtrlCSignal<Self>
+        where
+            Self: Sized,
+    {
+        CtrlCSignal::new(self, None)
     }
 }
 
@@ -215,8 +235,8 @@ impl<T: Future, DROP: Sized> Future for Timeout<T, DROP> {
 
 pub trait FutureWithTimeout: Future {
     fn timeout<DROP: Sized>(self, timeout: Duration, exit_handler: DROP) -> Timeout<Self, DROP>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         let delay = tokio_timer::delay_for(timeout);
         Timeout {

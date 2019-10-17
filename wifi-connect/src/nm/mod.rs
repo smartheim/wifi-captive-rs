@@ -9,11 +9,14 @@ mod find_wifi_device;
 mod generated;
 mod security;
 mod wifi_settings;
+mod hotspot;
 
 use super::CaptivePortalError;
 pub use connectivity::{
     ConnectionState, Connectivity, NetworkManagerState, NETWORK_MANAGER_STATE_CONNECTED,
     NETWORK_MANAGER_STATE_NOT_CONNECTED, NETWORK_MANAGER_STATE_TEMP,
+    wait_for_active_connection_state, wait_until_state, on_active_connection_state_change,
+    wait_for_connectivity, print_connection_changes,
 };
 pub use generated::*;
 pub use security::{credentials_from_data, AccessPointCredentials};
@@ -24,17 +27,23 @@ use dbus::{message::SignalArgs, nonblock, nonblock::SyncConnection};
 use bitflags::_core::time::Duration;
 use chrono::{TimeZone, Utc};
 use core::fmt;
-use enumflags2::BitFlags;
-use futures_util::StreamExt;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
+use crate::nm::wifi_settings::WiFiConnectionSettings;
 
 pub const NM_BUSNAME: &str = "org.freedesktop.NetworkManager";
 pub const NM_PATH: &str = "/org/freedesktop/NetworkManager";
 pub const NM_SETTINGS_PATH: &str = "/org/freedesktop/NetworkManager/Settings";
 const HOTSPOT_UUID: &str = "2b0d0f1d-b79d-43af-bde1-71744625642e";
+
+// Connection flags: optional flags argument.
+// Currently supported flags are: "0x1" (to-disk), "0x2" (in-memory), "0x4" (in-memory-detached),
+// "0x8" (in-memory-only), "0x10" (volatile), "0x20" (block-autoconnect), "0x40" (no-reapply).
+const SAVE_TO_DISK_FLAG: u32 = 0x01;
+const VOLATILE_FLAG: u32 = 0x8 | 0x10;
+const IN_MEMORY_ONLY: u32 = 0x8 | 0x20;
 
 /// A wifi SSID
 /// According to last standard 802.11-2012 (Section 6.3.11.2.2),
@@ -106,7 +115,7 @@ pub type AccessPointChangeReturnType = futures_util::stream::Select<APAddedType,
 
 impl NetworkManager {
     /// Create a new connection to the network manager. This will also try to enable networking
-    /// and wifi.
+    /// and wifi. Returns a network manager instance or an error if no wifi device can be found.
     pub async fn new(
         interface_name: &Option<String>,
     ) -> Result<NetworkManager, CaptivePortalError> {
@@ -187,144 +196,6 @@ impl NetworkManager {
         }
     }
 
-    /// The hotspot that is created by this service has a unique id.
-    /// This method will search connections for this id and delete the respective connection.
-    ///
-    /// This is necessary so that network manager does not try to auto connect to the hotspot
-    /// connection if nothing else can be found.
-    pub async fn hotspot_remove_existing(&self) -> Result<(), CaptivePortalError> {
-        let p = nonblock::Proxy::new(NM_BUSNAME, NM_SETTINGS_PATH, self.conn.clone());
-        use connections::Settings;
-        match p.get_connection_by_uuid(HOTSPOT_UUID).await {
-            Ok(connection_path) => {
-                info!("Deleting old hotspot configuration {}", connection_path);
-                let p = nonblock::Proxy::new(NM_BUSNAME, connection_path, self.conn.clone());
-                use connection_nm::Connection;
-                p.delete().await?;
-            }
-            Err(_) => {}
-        }
-        Ok(())
-    }
-
-    /// Deactivate all hotspot connections
-    pub async fn deactivate_hotspots(&self) -> Result<(), CaptivePortalError> {
-        self.hotspot_remove_existing().await?;
-
-        use networkmanager::NetworkManager;
-        let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
-
-        let connections = p.active_connections().await?;
-        info!("Scan {} connections for hotspot connections ...", connections.len());
-
-        for connection_path in connections {
-            let settings =
-                wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone())
-                    .await;
-            match settings {
-                Ok(Some(settings)) => {
-                    if settings.mode == WifiConnectionMode::AP {
-                        info!("disable hotspot connection {} {}", settings.uuid, settings.ssid);
-                        p.deactivate_connection(connection_path).await?;
-                    }
-                }
-                Err(e) => { warn!("{}", e); }
-                _ => {}
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn hotspot_start(
-        &self,
-        ssid: SSID,
-        password: Option<String>,
-        address: Option<Ipv4Addr>,
-    ) -> Result<ActiveConnection, CaptivePortalError> {
-        self.hotspot_remove_existing().await?;
-
-        info!("Configuring hotspot ...");
-        let connection_path = {
-            // add connection
-            let settings = wifi_settings::make_arguments_for_sta(
-                ssid,
-                password,
-                address,
-                &self.interface_name,
-                HOTSPOT_UUID,
-            )?;
-            let p = nonblock::Proxy::new(NM_BUSNAME, NM_SETTINGS_PATH, self.conn.clone());
-            use connections::Settings;
-            // We want the dbus nm api AddConnection2 here, but that's not yet available everywhere as of Oct 2019.
-            // Instead we first add the connection and then use Update2.
-            let connection_path = p.add_connection(settings).await?;
-
-            use connection_nm::Connection;
-            let p = nonblock::Proxy::new(NM_BUSNAME, connection_path.clone(), self.conn.clone());
-            // Currently supported flags are: "0x1" (to-disk), "0x2" (in-memory), "0x4" (in-memory-detached),
-            // "0x8" (in-memory-only), "0x10" (volatile), "0x20" (block-autoconnect), "0x40" (no-reapply).
-            // Do not set volatile here! volatile would immediately delete the connection.
-            const IN_MEMORY_ONLY: u32 = 0x8 | 0x20;
-            // Settings: Provide an empty array, to use the current settings.
-            p.update2(VariantMapNested::new(), IN_MEMORY_ONLY, VariantMap::new())
-                .await?;
-            connection_path
-        };
-
-        info!("Starting hotspot ...");
-        let active_connection = {
-            let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
-            use networkmanager::NetworkManager;
-            p.activate_connection(
-                connection_path.clone(),
-                self.wifi_device_path.clone(),
-                dbus::Path::new("/")?,
-            )
-                .await?
-        };
-
-        {
-            let p = nonblock::Proxy::new(NM_BUSNAME, active_connection.clone(), self.conn.clone());
-            use connection_active::ConnectionActive;
-            let state: connectivity::ConnectionState = p.state().await?.into();
-            info!("Wait for hotspot to settle ... {:?}", state);
-        }
-
-        let state_after_wait = self
-            .wait_for_active_connection_state(
-                connectivity::ConnectionState::Activated,
-                active_connection.clone(),
-                std::time::Duration::from_millis(5000),
-            )
-            .await?;
-
-        if state_after_wait != connectivity::ConnectionState::Activated {
-            info!("Hotspot starting failed with state {:?}", state_after_wait);
-            return Err(CaptivePortalError::hotspot_failed());
-        }
-
-        {
-            // Make connection "volatile". Can only be done on active connections.
-            use connection_nm::Connection;
-            let p = nonblock::Proxy::new(NM_BUSNAME, connection_path.clone(), self.conn.clone());
-            // Currently supported flags are: "0x1" (to-disk), "0x2" (in-memory), "0x4" (in-memory-detached),
-            // "0x8" (in-memory-only), "0x10" (volatile), "0x20" (block-autoconnect), "0x40" (no-reapply).
-            const VOLATILE_FLAG: u32 = 0x8 | 0x10;
-            // Settings: Provide an empty array, to use the current settings.
-            if let Err(e) = p.update2(VariantMapNested::new(), VOLATILE_FLAG, VariantMap::new())
-                .await {
-                warn!("Failed to make hotspot volatile: {}", e);
-            }
-        }
-
-        Ok(ActiveConnection {
-            connection_path: connection_path.into_static(),
-            active_connection_path: active_connection.into_static(),
-            state: state_after_wait,
-        })
-    }
-
     /// Subscribe to access point added and removed bus signals.
     pub async fn on_access_point_list_changes(
         &self,
@@ -366,158 +237,6 @@ impl NetworkManager {
         Ok(r)
     }
 
-    /// Continuously print connection state changes
-    #[allow(dead_code)]
-    pub async fn print_connection_changes(&self) -> Result<(), CaptivePortalError> {
-        use connection_active::ConnectionActiveStateChanged as ConnectionActiveChanged;
-        use dbus_tokio::SignalStream;
-
-        let rule = ConnectionActiveChanged::match_rule(None, None).static_clone();
-        let stream: SignalStream<ConnectionActiveChanged, ConnectionActiveChanged> =
-            SignalStream::new(self.conn.clone(), rule, Box::new(|v| v)).await?;
-        pin_utils::pin_mut!(stream);
-        let mut stream = stream; // Idea IDE Workaround
-
-        while let Some((value, path)) = stream.next().await {
-            info!(
-                "Connection state changed: {:?} {} on {}",
-                ConnectionState::from(value.state),
-                value.reason,
-                path
-            );
-        }
-
-        Ok(())
-    }
-
-    pub async fn wait_until_state(
-        &self,
-        expected_states: BitFlags<connectivity::NetworkManagerState>,
-        timeout: Option<std::time::Duration>,
-        negate_condition: bool,
-    ) -> Result<connectivity::NetworkManagerState, CaptivePortalError> {
-        use dbus_tokio::SignalStream;
-        use networkmanager::NetworkManagerStateChanged as StateChanged;
-
-        let state = self.state().await?;
-        if expected_states.contains(state) ^ negate_condition {
-            return Ok(state);
-        }
-
-        let rule = StateChanged::match_rule(None, None).static_clone();
-        let stream: SignalStream<StateChanged, StateChanged> =
-            SignalStream::new(self.conn.clone(), rule, Box::new(|v| v)).await?;
-        pin_utils::pin_mut!(stream);
-        let mut stream = stream; // Idea IDE Workaround
-
-        match timeout {
-            Some(timeout) => {
-                use tokio::future::FutureExt;
-                while let Ok(state_change) = stream.next().timeout(timeout).await {
-                    if let Some((value, _path)) = state_change {
-                        let state = NetworkManagerState::from(value.state);
-                        if expected_states.contains(state) ^ negate_condition {
-                            return Ok(state);
-                        }
-                    }
-                }
-            }
-            None => {
-                while let Some((value, _path)) = stream.next().await {
-                    let state = NetworkManagerState::from(value.state);
-                    if expected_states.contains(state) ^ negate_condition {
-                        return Ok(state);
-                    }
-                }
-            }
-        }
-
-        Ok(NetworkManagerState::Unknown)
-    }
-
-    /// The returned future resolves when either the timeout expired or state of the
-    /// **active** connection (eg /org/freedesktop/NetworkManager/ActiveConnection/12) is the expected state
-    /// or changes into the expected state.
-    pub async fn wait_for_active_connection_state(
-        &self,
-        expected_state: connectivity::ConnectionState,
-        path: dbus::Path<'_>,
-        timeout: std::time::Duration,
-    ) -> Result<connectivity::ConnectionState, CaptivePortalError> {
-        let p = nonblock::Proxy::new(NM_BUSNAME, path, self.conn.clone());
-
-        use connection_active::ConnectionActive;
-        let state: connectivity::ConnectionState = p.state().await?.into();
-        if state == expected_state {
-            return Ok(state);
-        }
-
-        use connection_active::ConnectionActiveStateChanged as StateChanged;
-        use dbus_tokio::SignalStream;
-
-        let rule = StateChanged::match_rule(None, None).static_clone();
-        let stream: SignalStream<StateChanged, u32> =
-            SignalStream::new(self.conn.clone(), rule, Box::new(|v: StateChanged| v.state)).await?;
-        pin_utils::pin_mut!(stream);
-        let mut stream = stream; // Idea IDE Workaround
-
-        use tokio::future::FutureExt;
-
-        while let Ok(state_change) = stream.next().timeout(timeout).await {
-            if let Some((state, _path)) = state_change {
-                let state = connectivity::ConnectionState::from(state);
-                if state == expected_state {
-                    return Ok(state);
-                }
-            }
-        }
-
-        let state: connectivity::ConnectionState = p.state().await?.into();
-        Ok(state)
-    }
-
-    /// The returned future resolves when either the timeout expired or state of the
-    /// **active** connection (eg /org/freedesktop/NetworkManager/ActiveConnection/12) is the expected state
-    /// or changes into the expected state.
-    pub async fn wait_for_connectivity(
-        &self,
-        expected: BitFlags<connectivity::Connectivity>,
-        timeout: std::time::Duration,
-        negate: bool,
-    ) -> Result<connectivity::Connectivity, CaptivePortalError> {
-        let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
-        use networkmanager::NetworkManager;
-
-        let state: connectivity::Connectivity = p.connectivity().await?.into();
-        if expected.contains(state) ^ negate {
-            return Ok(state);
-        }
-
-        use dbus_tokio::SignalStream;
-        use networkmanager::NetworkManagerStateChanged as StateChanged;
-
-        let rule = StateChanged::match_rule(None, None).static_clone();
-        let stream: SignalStream<StateChanged, u32> =
-            SignalStream::new(self.conn.clone(), rule, Box::new(|v: StateChanged| v.state)).await?;
-        pin_utils::pin_mut!(stream);
-        let mut stream = stream; // Idea IDE Workaround
-
-        use tokio::future::FutureExt;
-
-        while let Ok(state_change) = stream.next().timeout(timeout).await {
-            // Whenever network managers state change, request the current connectivity
-            if let Some((_state, _path)) = state_change {
-                let state: connectivity::Connectivity = p.connectivity().await?.into();
-                if expected.contains(state) ^ negate {
-                    return Ok(state);
-                }
-            }
-        }
-
-        let state: connectivity::Connectivity = p.connectivity().await?.into();
-        Ok(state)
-    }
-
     /// The current connectity status
     //    pub async fn connectivity(&self) -> Result<connectivity::Connectivity, CaptivePortalError> {
     //        let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
@@ -532,84 +251,26 @@ impl NetworkManager {
         Ok(p.state().await?.into())
     }
 
-    /// Disables all known wifi connections, set auto-connect to true and enable them again
-    /// and let network manager try to auto-connect.
+    /// Let network manager try to auto-connect.
     pub async fn try_auto_connect(
         &self,
         timeout: std::time::Duration,
     ) -> Result<bool, CaptivePortalError> {
-        {
-            use device::Device;
-            let p = nonblock::Proxy::new(NM_BUSNAME, &self.wifi_device_path, self.conn.clone());
-            if let Err(e) = p.set_autoconnect(true).await {
-                warn!(
-                    "Failed to enable autoconnect for {}: {}",
-                    self.interface_name, e
-                );
-            }
-        };
+        self.enable_auto_connect().await;
 
-        // Wait if currently in a temporary state
-        info!("Waiting for network manager state to settle...");
-        let state = self
-            .wait_until_state(*NETWORK_MANAGER_STATE_TEMP, Some(timeout), true)
-            .await?;
-        // If connected -> all good
-        if NETWORK_MANAGER_STATE_CONNECTED.contains(state) {
-            info!("Ok");
-            return Ok(true);
-        }
+        use connections::Settings;
+        let p = nonblock::Proxy::new(NM_BUSNAME, NM_SETTINGS_PATH, self.conn.clone());
 
-        let connections = {
-            use connections::Settings;
-            let p = nonblock::Proxy::new(NM_BUSNAME, NM_SETTINGS_PATH, self.conn.clone());
-            p.connections().await?
-        };
+        info!("Trying to connect to one of {} known connections ...", p.connections().await?.len());
 
-        info!(
-            "Trying to connect to one of {} known connections",
-            connections.len()
-        );
-
-        // Don't try to activate all connections -> this will make network manager ask for credentials
-//        for connection_path in connections {
-//            let settings =
-//                wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone())
-//                    .await?;
-//            if let Some(settings) = settings {
-//                if settings.mode != WifiConnectionMode::Infrastructure
-//                    || settings.uuid == HOTSPOT_UUID
-//                {
-//                    continue;
-//                }
-//            } else {
-//                continue;
-//            }
-//            let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
-//            use networkmanager::NetworkManager;
-//            p.activate_connection(
-//                connection_path,
-//                self.wifi_device_path.clone(),
-//                dbus::Path::new("/")?,
-//            ).await?;
-//        }
-
-        // Wait until connected
-        info!("Waiting for network connection...");
-        let state = self
-            .wait_until_state(*NETWORK_MANAGER_STATE_CONNECTED, Some(timeout), false)
+        let state = wait_until_state(self, *NETWORK_MANAGER_STATE_CONNECTED, Some(timeout), false)
             .await?;
 
         Ok(NETWORK_MANAGER_STATE_CONNECTED.contains(state))
     }
 
-    /// Returns a tuple with network manager dbus paths on success: (connection, active_connection)
-    pub async fn update_connection(
-        &self,
-        ssid: SSID,
-        hw: String,
-        credentials: security::AccessPointCredentials,
-    ) -> Result<Option<(dbus::Path<'_>, dbus::Path<'_>)>, CaptivePortalError> {
+    /// Returns the dbus network manager api connection path and old connection settings as tuple.
+    pub async fn find_connection_by_mac(&self, hw: &String) -> Result<Option<(dbus::Path<'_>,WiFiConnectionSettings)>, CaptivePortalError> {
         let connections = {
             use connections::Settings;
             let p = nonblock::Proxy::new(NM_BUSNAME, NM_SETTINGS_PATH, self.conn.clone());
@@ -621,48 +282,104 @@ impl NetworkManager {
                     .await?;
             if let Some(settings) = settings {
                 // A matching connection could be found. Replace the settings with new ones and store to disk
-                if settings.seen_bssids.contains(&hw) {
-                    use connection_nm::Connection;
-                    let p = nonblock::Proxy::new(
-                        NM_BUSNAME,
-                        connection_path.clone(),
-                        self.conn.clone(),
-                    );
-                    const SAVE_TO_DISK_FLAG: u32 = 0x01;
-                    let settings =
-                        wifi_settings::make_arguments_for_ap::<&'static str>(ssid, credentials)?;
-                    p.update2(settings, SAVE_TO_DISK_FLAG, VariantMap::new())
-                        .await?;
-                    // Activate connection
-                    let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
-                    use networkmanager::NetworkManager;
-                    let active_path = p
-                        .activate_connection(
-                            connection_path.clone(),
-                            self.wifi_device_path.clone(),
-                            "".into(),
-                        )
-                        .await?;
-                    return Ok(Some((connection_path, active_path)));
+                if settings.seen_bssids.contains(hw) {
+                    return Ok(Some((connection_path, settings)));
                 }
             }
         }
-        Ok(None)
+        return Ok(None);
+    }
+
+    /// Returns the dbus network manager api connection path and the connection_id as tuple.
+    pub async fn find_connection_by_ssid(&self, ssid: &SSID) -> Result<Option<(dbus::Path<'_>,WiFiConnectionSettings)>, CaptivePortalError> {
+        let connections = {
+            use connections::Settings;
+            let p = nonblock::Proxy::new(NM_BUSNAME, NM_SETTINGS_PATH, self.conn.clone());
+            p.connections().await?
+        };
+        for connection_path in connections {
+            let settings =
+                wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone())
+                    .await?;
+            if let Some(settings) = settings {
+                // A matching connection could be found. Replace the settings with new ones and store to disk
+                if &settings.ssid == ssid {
+                    return Ok(Some((connection_path, settings)));
+                }
+            }
+        }
+        return Ok(None);
+    }
+
+    /// Returns a tuple with network manager dbus paths on success: (connection, active_connection)
+    pub async fn update_connection<'a>(
+        &self,
+        connection_path: dbus::Path<'a>,
+        ssid: &SSID,
+        old_connection: WiFiConnectionSettings,
+        credentials: security::AccessPointCredentials,
+    ) -> Result<(dbus::Path<'a>, dbus::Path<'_>), CaptivePortalError> {
+        use connection_nm::Connection;
+        let p = nonblock::Proxy::new(
+            NM_BUSNAME,
+            connection_path.clone(),
+            self.conn.clone(),
+        );
+        let settings =
+            wifi_settings::make_arguments_for_ap::<&'static str>(ssid, credentials,Some(old_connection))?;
+        p.update2(settings, IN_MEMORY_ONLY, VariantMap::new())
+            .await?;
+        // Activate connection
+        let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
+        use networkmanager::NetworkManager;
+        let active_path = p
+            .activate_connection(
+                connection_path.clone(),
+                self.wifi_device_path.clone(),
+                "/".into(),
+            )
+            .await?;
+        Ok((connection_path, active_path))
     }
 
     /// Connect to the given SSID with the given credentials.
-    /// First tries to find a wifi connection that was connected to an access point with the given "hw" (mac address).
+    /// First tries to find a wifi connection if "hw" is set or "overwrite_same_ssid_connection" is true.
     /// If it finds one, the connection will be altered to use the given credentials and SSID, otherwise a new connection is created.
+    ///
+    /// If "overwrite_same_ssid_connection" is false and "hw" is not set, but network manager already knows about a connection
+    /// to a SSID with the same name, it will add a number suffix to the connection name. If the SSID is
+    /// for example "My AP" and there is already a connection with the name "My AP", the newly
+    /// created connection will be named "My AP 1".
+    ///
+    /// # Arguments:
+    /// * ssid: The ssid
+    /// * credentials: The connection credentials
+    /// * hw: The target access point mac address. If this is set, this method will first try to find
+    ///   a connection that was connected to that access point in the past and update that connection.
+    /// * overwrite_same_ssid_connection: If this is true and a connection can be found that matches the
+    ///   given SSID, that connection will be updated.
     pub async fn connect_to(
         &self,
         ssid: SSID,
-        hw: Option<String>,
         credentials: security::AccessPointCredentials,
+        hw: Option<String>,
+        overwrite_same_ssid_connection: bool,
     ) -> Result<Option<ActiveConnection>, CaptivePortalError> {
         // try to find connection, update it, activate it and return the connection path
         let active_connection = if let Some(hw) = hw {
-            self.update_connection(ssid.clone(), hw, credentials.clone())
-                .await?
+            if let Some((connection_path, old_connection)) = self.find_connection_by_mac(&hw).await? {
+                Some(self.update_connection(connection_path, &ssid, old_connection,credentials.clone())
+                    .await?)
+            } else {
+                None
+            }
+        } else if overwrite_same_ssid_connection {
+            if let Some((connection_path, old_connection)) = self.find_connection_by_ssid(&ssid).await? {
+                Some(self.update_connection(connection_path, &ssid, old_connection,credentials.clone())
+                    .await?)
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -672,7 +389,7 @@ impl NetworkManager {
             if let Some(active_connection) = active_connection {
                 active_connection
             } else {
-                let settings = wifi_settings::make_arguments_for_ap(ssid.clone(), credentials)?;
+                let settings = wifi_settings::make_arguments_for_ap(&ssid, credentials,None)?;
                 let options = wifi_settings::make_options_for_ap();
 
                 // Create connection
@@ -689,23 +406,37 @@ impl NetworkManager {
                 (conn_path, active_connection)
             };
 
-        // Wait until connected
-        let state = self
-            .wait_for_active_connection_state(
-                connectivity::ConnectionState::Activated,
-                active_connection.clone(),
-                Duration::from_secs(7),
-            )
-            .await?;
+        // Wait up to 5 seconds while in Deactivated
+        let state = wait_for_active_connection_state(
+            self,
+            connectivity::ConnectionState::Deactivated,
+            active_connection.clone(),
+            Duration::from_secs(5),
+            true,
+        ).await?;
+        dbg!(state);
+
+        {
+            use device::Device;
+            let p = nonblock::Proxy::new(NM_BUSNAME, self.wifi_device_path.clone(), self.conn.clone());
+            dbg!(connectivity::DeviceState::from(p.state().await?));
+        }
+
+        // Wait up to 30 seconds while in Activating
+        let state = wait_for_active_connection_state(
+            self,
+            connectivity::ConnectionState::Activating,
+            active_connection.clone(),
+            Duration::from_secs(30),
+            true,
+        ).await?;
+        dbg!(state);
 
         // Remove connection if not successful. Store it permanently if successful
         if state == connectivity::ConnectionState::Activated {
             use connection_nm::Connection;
             let p = nonblock::Proxy::new(NM_BUSNAME, connection_path.clone(), self.conn.clone());
-            //  flags: optional flags argument.
-            // Currently supported flags are: "0x1" (to-disk), "0x2" (in-memory), "0x4" (in-memory-detached),
-            // "0x8" (in-memory-only), "0x10" (volatile), "0x20" (block-autoconnect), "0x40" (no-reapply).
-            const SAVE_TO_DISK_FLAG: u32 = 0x01;
+
             // Settings: Provide an empty array, to use the current settings.
             p.update2(
                 VariantMapNested::new(),
@@ -782,22 +513,4 @@ impl NetworkManager {
 
         Ok(connections)
     }
-}
-
-pub async fn on_active_connection_state_change(
-    nm: &NetworkManager,
-    path: dbus::Path<'_>,
-) -> Result<connectivity::ConnectionState, CaptivePortalError> {
-    use connection_active::ConnectionActiveStateChanged as StateChanged;
-    use dbus_tokio::SignalStream;
-
-    let rule = StateChanged::match_rule(None, Some(&path)).static_clone();
-    let stream: SignalStream<StateChanged, u32> =
-        SignalStream::new(nm.conn.clone(), rule, Box::new(|v: StateChanged| v.state)).await?;
-    pin_utils::pin_mut!(stream);
-    let mut stream = stream; // Idea IDE Workaround
-    Ok(match stream.next().await {
-        None => connectivity::ConnectionState::Unknown,
-        Some(v) => v.0.into(),
-    })
 }

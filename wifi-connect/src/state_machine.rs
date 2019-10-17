@@ -3,7 +3,7 @@ use super::{
     http_server::WifiConnectionRequest,
     nm::{
         credentials_from_data, ConnectionState, Connectivity, NetworkManager, NetworkManagerState,
-        NETWORK_MANAGER_STATE_CONNECTED,
+        NETWORK_MANAGER_STATE_CONNECTED, wait_for_connectivity, wait_until_state,
     },
     utils::ctrl_c_or_future,
     utils::FutureWithSignalCancel,
@@ -131,8 +131,7 @@ impl StateMachine {
                         false => Connectivity::Full | Connectivity::Limited | Connectivity::Portal,
                     };
 
-                let c_state = nm
-                    .wait_for_connectivity(expected_connectivity, Duration::from_secs(5), false)
+                let c_state = wait_for_connectivity(&nm, expected_connectivity, Duration::from_secs(5), false)
                     .await?;
                 info!("Current connectivity: {:?}", c_state);
 
@@ -141,11 +140,12 @@ impl StateMachine {
                 }
 
                 // Await a connectivity change, ctrl+c or the timeout
-                let r = ctrl_c_or_future(nm.wait_until_state(
-                    *NETWORK_MANAGER_STATE_CONNECTED,
-                    Some(Duration::from_secs(config.retry_in)),
-                    true,
-                )).await?;
+                let r = wait_until_state(&nm,
+                                         *NETWORK_MANAGER_STATE_CONNECTED,
+                                         Some(Duration::from_secs(config.retry_in)),
+                                         true,
+                ).ctrl_c().await;
+
                 match r {
                     // Ctrl+C
                     None => Ok(Some(StateMachine::Exit(nm))),
@@ -196,14 +196,19 @@ impl StateMachine {
                     Duration::from_secs(config.retry_in),
                 )?;
 
-                let r = portal.ctrl_c(exit_handler).await?;
+                let r = portal.ctrl_c_exit(exit_handler).await;
                 info!("Portal closed");
                 match r {
                     // Ctrl+C
                     None => Ok(Some(StateMachine::Exit(nm))),
-                    // Either the user has entered a wifi connection or a timeout/ctrl-c happened
+                    // Either the user has entered a wifi connection or a timeout happened
                     Some(wifi_connection) => {
-                        Ok(Some(StateMachine::Connect(config, nm, wifi_connection)))
+                        match wifi_connection? {
+                            // The user has entered a wifi connection
+                            Some(wifi_connection) => Ok(Some(StateMachine::Connect(config, nm, wifi_connection))),
+                            // Timeout
+                            None => Ok(Some(StateMachine::TryReconnect(config, nm)))
+                        }
                     }
                 }
             }
@@ -213,8 +218,9 @@ impl StateMachine {
                 let connection = nm
                     .connect_to(
                         network.ssid,
-                        network.hw,
                         credentials_from_data(network.passphrase, network.identity, &network.mode)?,
+                        network.hw,
+                        true
                     )
                     .await?;
                 if let Some(connection) = connection {
