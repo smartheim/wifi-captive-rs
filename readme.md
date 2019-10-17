@@ -1,55 +1,231 @@
-# Container focused operating system for OHX
+# Wifi-Captive
 
-[![Build Status](https://github.com/openhab-nodes/ohx-os/workflows/test/badge.svg)](https://github.com/openhab-nodes/ohx-os/actions)
-[![](https://img.shields.io/badge/license-MIT-blue.svg)](http://opensource.org/licenses/MIT)
+> WiFi service for Linux devices that opens an access point with a captive portal for easy network configuration from your mobile phone or laptop
 
-This repository hosts scripts to assemble and deploy operating system images
-with OHX preinstalled. The images are deployed to the Github releases page of this repo.
-This repo also contains 
+**Release note: This crate is not yet on crates.io. It relies on a few async/await modifications to
+the dbus crate. As soon as those are upstream a release is made.**
 
-The log-in user is called "ohx" with a default password "ohx", ssh is enabled.
+WiFi Connect is a utility for dynamically setting the WiFi configuration on a Linux device via a captive portal.
+WiFi credentials are specified by connecting with a mobile phone or laptop to the access point that WiFi Connect creates.
+The access point includes a simple DHCP server for assigning clients IP addresses
+and a DNS server for routing all pages to the captive portal. 
 
-Supported systems are:
-* Any UEFI equiped x86-64 system like the Intel NUC
-* The Raspberry PI 3 and 4.
-* The Pine64
+## Table of Contents
 
-You can use a flashed SD-Card with 
-Please wait about 4 minutes on the very first boot, because the sd-card 
+1. [Usage](#usage)
+1. [How it works](#how-it-works)
+1. [Not supported boards / dongles](#not-supported-boards-/-dongles)
+1. [Development, Get Involved](#development,-get-involved)
+    1. [System ports](#system-ports)
+    1. [Maintenance and future development](#maintenance-and-future-development)
+1. [Acknowledgements](#acknowledgements)
+    1. [Similar projects](#similar-projects)
+1. [FAQ](#faq)
 
-## About the operating system choice
+## Usage
 
-The operating system is based on openSUSE Kubic (which is a variant of openSUSE MicroOS) with customized [Ignition](https://en.opensuse.org/Kubic:MicroOS/Ignition)
-and cloud-init first-boot scripts or on BalenaOS. This is not yet decided.
+**Compile** with `cargo build`. You need at least rust 1.39 or rust nightly after 2019.09.
 
-BalenaOS is more mature, but does have a strong bound to the balena cloud and an own supervisior. It also use the original docker daemon, instead of a rootless software container alternative like it is done with Redhats Fedora IoT and openSUSEs Kubic. Fedora IoT as well as openSUSE Kubic both have a boot time of about 5 minutes and only support a very limited selection of single board ARM systems (fedora: RPI3, openSUSE: RPI3, Pine64).
+**Start** with `RUST_LOG=info cargo run -- -l 3000 -g 127.0.0.1 --dns-port 1535 --dhcp-port 6767`,
+which doesn't require any permissions. The hotspot gateway is 127.0.0.1,
+the http portal will be on http://127.0.0.1:3000, the dns server is on 1535,
+the dhcp server on 6767. Logging is controlled by the `RUST_LOG` env variable.
+It can be set to DEBUG, INFO, WARN, ERROR. Default is ERROR.
 
-A non-goal for OHX-OS is a custom build OS, based on [buildroot](https://buildroot.org/).
-This would require a custom update mechanism, CVE tracker and more and is not the focus of the OHX project.
+### Command line options
 
-## Assemble scripts
+If both a command line option and an environment variable counterpart (identified by a leading $) is defined,
+the command line option will take higher precedence.
 
-Prerequirements:
+*   **--help**
 
-* skopeo
-* A dockerhub credentials file (`docker_credentials.inc`) with a credentials line following the pattern "DOCKER_CRED=username:password".
+    Print available command line parameters
+    
+*   **-d, --portal-dhcp-range** dhcp_range, **$PORTAL_DHCP_RANGE**
 
-The `./build_microos.sh` and `./build_balena.sh` scripts first downloads the current openSUSE Kubic images or balena OS images respectively for all supported systems (x86-64, aarch64-rpi3). They decompress and mount the images.
+    DHCP range of the captive portal WiFi network
 
-The Kubic script will write the *Ignition* and cloud-init first-boot instructions.
+    Default: _192.168.42.2,192.168.42.254_
 
-The balena script will write the `config.json` file.
+*   **-g, --portal-gateway** gateway, **$PORTAL_GATEWAY**
 
-In a final step in both script types the the wifi-connect binary and aux files as well as the OHX core containers are added and finally all images are compressed again and temporary directories are removed.
+    Gateway of the captive portal WiFi network
 
-## Deployment
+    Default: _192.168.42.1_
 
-Prerequirements:
+*   **-o, --portal-listening-port** listening_port, **$PORTAL_LISTENING_PORT**
 
-* skopeo
-* A github credentials file (`github_access_token.inc`) with a credentials line following the pattern "GITHUB_CRED=username:access_token". Create an access token in the OHX organisation page.
+    Listening port of the captive portal web server
 
-Execute the `deploy.sh` script to:
+    Default: _80_
 
-* Create a new release and add a message with the current date to it.
-* Attach / Upload the generated images
+*   **-i, --portal-interface** interface, **$PORTAL_INTERFACE**
+
+    Wireless network interface to be used by WiFi Connect
+
+*   **-p, --portal-passphrase** passphrase, **$PORTAL_PASSPHRASE**
+
+    WPA2 Passphrase of the captive portal WiFi network
+
+    Default: _no passphrase_
+
+*   **-s, --portal-ssid** ssid, **$PORTAL_SSID**
+
+    ssid of the captive portal WiFi network
+
+    Default: _WiFi Connect_
+    
+*   **-w, --wait-before-reconfigure** sec, **$PORTAL_WAIT**
+
+    Time in seconds before the portal is opened for re-configuration,
+    if no connection can be established.
+
+    Default: _20_
+
+*   **-r, --retry-in** sec, **$PORTAL_RETRY_IN**
+
+    Time in seconds before retrying to connect to a configured WiFi SSID.
+    The attempt happens independently if a portal is currently open or not,
+    but if a portal and access point is set up, it will be temporarily shut down
+    for the connection attempt.
+    The timer is reset whenever a client connects to the captive portal.
+
+    Default: _360_
+
+*   **-q, --quit-after-connected**
+
+    Exit after a connection has been established. 
+
+    Default: _false_
+
+*   **--internet-connectivity**
+
+    Require internet connectivity to deem a connection successful.
+    Usually it is sufficient if a connection to the local network can be established.
+
+    Default: _false_
+
+## How it works
+
+WiFi Connect interacts via DBUS with network_manager, which must be the active network manager on the device's host OS.
+
+### 1. Device Creates Access Point
+
+**Only if** no ethernet connection can be found **and** no wifi connection is configured so far:
+
+The application detects available WiFi networks and opens an access point with a captive portal.
+
+### 2. User Connects Phone to Device Access Point
+
+Connect to the opened access point on the device from your mobile phone or laptop.
+The access point ssid is, by default, `WiFi Connect` with no password.
+
+### 3. Phone Shows Captive Portal to User
+
+After connecting to the access point from a mobile phone, it will detect the captive portal and open its web page.
+Opening any web page will redirect to the captive portal as well.
+
+### 4. User Enters Local WiFi Network Credentials
+
+The captive portal provides the option to select a WiFi ssid from a list with detected WiFi networks or to enter
+a ssid. If necessary a passphrase must be entered for the desired network.
+
+### 5. Device Connects to Local WiFi Network
+
+When the network credentials have been entered,
+the service will disable the access point and try to connect to the network.
+If the connection fails, it will enable the access point for another attempt.
+If it succeeds, the configuration will be saved by network_manager.
+
+### 6. Connection Lost
+
+**Only if** no ethernet connection can be found **and** no WiFi connection can be established for more than 20 seconds although one is configured:
+
+The access point is opened again for reconfiguration, as described in *1. Advertise*.
+
+## Not supported boards / dongles
+
+The following dongles are known **not** to work with network_manager:
+
+* Official Raspberry Pi dongle (BCM43143 chip)
+* Addon NWU276 (Mediatek MT7601 chip)
+* Edimax (Realtek RTL8188CUS chip)
+
+Dongles with similar chipsets will probably not work.
+
+## Development, Get Involved
+
+PRs are welcome. A PR is expected to be under the same license as the crate itself.
+This crate is using rusts async / await support (since Rust 1.38).
+Tokio 0.2 and futures 0.3 are used. A futures 0.1 compat dependency will not
+make a good PR candidate ;)
+
+There is not yet a full integration test. IMO a good one would fake network manager
+responses which requires a dbus service. The dbus crate is currently (as of Oct 2019)
+restructuring how dbus services are written.  
+
+### System ports
+
+The default ports as mentioned above are:
+
+* port 80 for the webserver,
+* port 67/68 for DHCP and
+* port 53 for the dns server.
+
+Those ports are considered "system" ports and require elevated permissions.
+You need to either run the application as root or set the NET_BINDSERVICE capability like so:
+`sudo setcap CAP_NET_BIND_SERVICE=+eip /path/to/binary`.
+
+Because this is tedious during development, you can use the helper program *set_net_cap* in `scripts`.
+Use it like this: `./scripts/set_net_cap target/debug/wifi-captive`. Just add it as a last build step to your development environment.
+
+It makes use of the fact that a setuid program doesn't require you to enter a password.
+To compile the C program, change the ownership to the root user and set the setuid bit,
+do this:
+
+```shell
+gcc -o scripts/set_net_cap scripts/set_net_cap.c && \
+sudo chown root:root scripts/set_net_cap && \
+sudo chmod +s scripts/set_net_cap
+``` 
+
+### Maintenance and future development
+
+The application is considered almost finished. It will be adapted to newer
+dependency and rust versions. 
+
+"Almost", because one goal is, to statically compile the binary.
+This is not yet possible due to the dbus crate using the libdbus C-library.
+
+## Acknowledgements
+
+* DHCP: Inspired by https://github.com/krolaw/dhcp4r (Richard Warburton).
+  The implemented version in this crate is rewritten with only the packet struct being similar. 
+* DNS: Inspired by https://github.com/EmilHernvall/dnsguide/blob/master/samples/sample4.rs (Emil Hernvall). 
+  The implemented version in this crate is rewritten. The Query, Record, Header and Packet
+  data structures are similar. 
+
+### Similar projects
+
+There is also Wifi-Connect from <a href="https://balena.io">balena.io</a>.
+It is based on futures 0.1 and uses Iron as http server framework.
+It is not designed as long running background service, but quits after a connection
+has been established.
+It forces the user to be root (UID=0) and uses `dnsmasq` for dns and dhcp-ip provisioning. 
+
+## FAQ 
+
+* **Can I configure multiple access points for fallback reasons?**
+  Not per se. But you could configure once access point, disable that one
+  (or move out of its range) and configure a second / third one.
+  This service will try all known connections when in *reconnect* mode.
+  
+* **Are 2.4Ghz / 5 Ghz access points with the same SSID used interchangeably?**
+  No. The user interface always shows the frequency of the selected access point
+  and exactly that one is stored and used. 
+
+* **Does scanning work during hotspot mode?**
+  Many network chipsets do not support that. If a second / other wireless chipsets
+  are installed, those will be used instead for scanning.
+-----
+ David Gräff, 2019
