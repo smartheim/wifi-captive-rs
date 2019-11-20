@@ -564,7 +564,7 @@ mod tests {
     fn test_domain() {
         let rt = Runtime::new().expect("Runtime for dhcp test");
 
-        let timeout = tokio_timer::delay_for(Duration::from_secs(2));
+        let timeout = tokio::timer::delay_for(Duration::from_secs(2));
         pin_mut!(timeout);
         let test = test_domain_async();
         pin_mut!(test);

@@ -1,17 +1,15 @@
-use super::{
-    config::Config,
-    http_server::WifiConnectionRequest,
-    nm::{
-        credentials_from_data, ConnectionState, Connectivity, NetworkManager, NetworkManagerState,
-        NETWORK_MANAGER_STATE_CONNECTED, wait_for_connectivity, wait_until_state,
-    },
-    utils::ctrl_c_or_future,
-    utils::FutureWithSignalCancel,
-    CaptivePortalError,
-};
-use enumflags2::BitFlags;
+use crate::config::Config;
+use crate::http_server::WifiConnectionRequest;
+use crate::network_backend::NetworkBackend;
+use crate::network_interface::credentials_from_data;
+use crate::utils::ctrl_c_or_future;
+use crate::utils::FutureWithSignalCancel;
+use crate::CaptivePortalError;
+use crate::ConnectionState;
+use crate::NetworkManagerState;
 use log::info;
 use std::time::Duration;
+use std::convert::TryInto;
 
 /// The programs state machine. Each state carries its required data, no side-effects.
 /// The configuration and network manager connection are moved between states.
@@ -39,7 +37,7 @@ pub enum StateMachine {
     /// # Errors:
     /// Fails if network manager permissions do not allow to issue wifi scans or connect to
     /// access points. Error out if network manager cannot be reached.
-    TryReconnect(Config, NetworkManager),
+    TryReconnect(Config, NetworkBackend),
 
     /// The device is connected, as reported by network manager
     ///
@@ -49,7 +47,7 @@ pub enum StateMachine {
     /// # Transitions:
     /// **TryReconnect** -> On connection lost
     /// **Exit** ->  On ctrl+c
-    Connected(Config, NetworkManager),
+    Connected(Config, NetworkBackend),
 
     /// Activates a wifi hotspot and portal page.
     /// Starts up an http server, a dns server and a dhcp server.
@@ -62,26 +60,26 @@ pub enum StateMachine {
     /// **Connect** -> When the user requests to connect to a wifi access point via the http server.
     /// **Connected** -> When a connection could be established
     /// **Exit** ->  On ctrl+c
-    ActivatePortal(Config, NetworkManager),
+    ActivatePortal(Config, NetworkBackend),
 
     /// Tries to connect to the given access point.
     ///
     /// # Transitions:
     /// **Connected** First stores the ssid+passphrase+identity in Config then transition in the connected state.
     /// **ActivatePortal** If the connection fails after a few attempts
-    Connect(Config, NetworkManager, WifiConnectionRequest),
+    Connect(Config, NetworkBackend, WifiConnectionRequest),
 
     /// Quits the program
     ///
     /// Shuts down the network manager connection.
-    Exit(NetworkManager),
+    Exit(NetworkBackend),
 }
 
 impl StateMachine {
     pub async fn progress(self) -> Result<Option<StateMachine>, CaptivePortalError> {
         match self {
             StateMachine::StartUp(config) => {
-                let nm = NetworkManager::new(&config.interface).await?;
+                let nm = NetworkBackend::new(&config.interface).await?;
                 nm.enable_networking_and_wifi().await?;
 
                 let state = nm.state().await?;
@@ -91,17 +89,13 @@ impl StateMachine {
                     | NetworkManagerState::Asleep
                     | NetworkManagerState::Disconnected => {
                         Some(StateMachine::ActivatePortal(config, nm))
-                    }
+                    },
                     NetworkManagerState::Disconnecting | NetworkManagerState::Connecting => {
                         Some(StateMachine::TryReconnect(config, nm))
-                    }
-                    NetworkManagerState::ConnectedLocal
-                    | NetworkManagerState::ConnectedSite
-                    | NetworkManagerState::ConnectedGlobal => {
-                        Some(StateMachine::Connected(config, nm))
-                    }
+                    },
+                    NetworkManagerState::Connected => Some(StateMachine::Connected(config, nm)),
                 })
-            }
+            },
             StateMachine::TryReconnect(config, nm) => {
                 info!("No connection found. Trying to reestablish");
                 nm.enable_networking_and_wifi().await?;
@@ -110,7 +104,7 @@ impl StateMachine {
                 let r = ctrl_c_or_future(
                     nm.try_auto_connect(Duration::from_secs(config.wait_before_reconfigure)),
                 )
-                    .await?;
+                .await?;
                 match r {
                     // Ctrl+C
                     None => return Ok(Some(StateMachine::Exit(nm))),
@@ -118,21 +112,16 @@ impl StateMachine {
                         if state {
                             return Ok(Some(StateMachine::Connected(config, nm)));
                         }
-                    }
+                    },
                 }
                 return Ok(Some(StateMachine::ActivatePortal(config, nm)));
-            }
+            },
             StateMachine::Connected(config, nm) => {
                 nm.deactivate_hotspots().await?;
 
-                let expected_connectivity: BitFlags<Connectivity> =
-                    match config.internet_connectivity {
-                        true => Connectivity::Full.into(),
-                        false => Connectivity::Full | Connectivity::Limited | Connectivity::Portal,
-                    };
-
-                let c_state = wait_for_connectivity(&nm, expected_connectivity, Duration::from_secs(5), false)
-                    .await?;
+                let c_state = nm
+                    .wait_for_connectivity(config.internet_connectivity, Duration::from_secs(5))
+                    .await;
                 info!("Current connectivity: {:?}", c_state);
 
                 if config.quit_after_connected {
@@ -140,18 +129,21 @@ impl StateMachine {
                 }
 
                 // Await a connectivity change, ctrl+c or the timeout
-                let r = wait_until_state(&nm,
-                                         *NETWORK_MANAGER_STATE_CONNECTED,
-                                         Some(Duration::from_secs(config.retry_in)),
-                                         true,
-                ).ctrl_c().await;
+                let r = nm
+                    .wait_until_state(
+                        NetworkManagerState::Connected,
+                        Some(Duration::from_secs(config.retry_in)),
+                        true,
+                    )
+                    .ctrl_c()
+                    .await;
 
                 match r {
                     // Ctrl+C
                     None => Ok(Some(StateMachine::Exit(nm))),
                     Some(_) => Ok(Some(StateMachine::TryReconnect(config, nm))),
                 }
-            }
+            },
             StateMachine::ActivatePortal(config, nm) => {
                 nm.enable_networking_and_wifi().await?;
 
@@ -173,17 +165,15 @@ impl StateMachine {
                     .await;
 
                 let active_connection = match r {
-                    Ok(Ok(r)) => {
-                        r.active_connection_path
-                    }
+                    Ok(Ok(r)) => r.active_connection_path,
                     Err(_) => {
                         warn!("Failed to create hotspot: Timeout. Trying to establish a connection instead.");
                         return Ok(Some(StateMachine::TryReconnect(config, nm)));
-                    }
+                    },
                     Ok(Err(e)) => {
                         warn!("Failed to create hotspot: {}. Trying to establish a connection instead.", e);
                         return Ok(Some(StateMachine::TryReconnect(config, nm)));
-                    }
+                    },
                 };
 
                 info!("Activating portal services");
@@ -205,22 +195,24 @@ impl StateMachine {
                     Some(wifi_connection) => {
                         match wifi_connection? {
                             // The user has entered a wifi connection
-                            Some(wifi_connection) => Ok(Some(StateMachine::Connect(config, nm, wifi_connection))),
+                            Some(wifi_connection) => {
+                                Ok(Some(StateMachine::Connect(config, nm, wifi_connection)))
+                            },
                             // Timeout
-                            None => Ok(Some(StateMachine::TryReconnect(config, nm)))
+                            None => Ok(Some(StateMachine::TryReconnect(config, nm))),
                         }
-                    }
+                    },
                 }
-            }
+            },
             StateMachine::Connect(config, nm, network) => {
                 info!("Connecting ...");
 
                 let connection = nm
                     .connect_to(
                         network.ssid,
-                        credentials_from_data(network.passphrase, network.identity, &network.mode)?,
+                        credentials_from_data(network.passphrase, network.identity, network.mode.try_into()?)?,
                         network.hw,
-                        true
+                        true,
                     )
                     .await?;
                 if let Some(connection) = connection {
@@ -231,12 +223,12 @@ impl StateMachine {
                 } else {
                     Ok(Some(StateMachine::ActivatePortal(config, nm)))
                 }
-            }
+            },
             StateMachine::Exit(nm) => {
                 info!("Exiting");
                 nm.quit();
                 Ok(None)
-            }
+            },
         }
     }
 }

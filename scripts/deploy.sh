@@ -41,13 +41,13 @@ main() {
 
     # Build linux x86_64 variant
     ensure cargo build --release
-    ensure cp target/release/wifi-captive target/releases/linux_$(uname -m)
+    ensure cp "target/release/$APPNAME" "target/releases/linux_$(uname -m)"
 
     # Strip files
     local _size
     for _file in target/releases/*; do
-        ensure strip $_file
-        _size = $(du -h $_file | cut -f 1)
+        ensure strip "$_file"
+        _size=$(du -h "$_file" | cut -f 1)
         say "Binary $_file ($_size)"
     done
 
@@ -79,7 +79,7 @@ main() {
     )
 
     _response=$(
-        curl -sSL -X POST "https://api.github.com/repos/openhab-nodes/ohx-os/releases" \
+        curl -sSL -X POST "https://api.github.com/repos/openhab-nodes/wifi-captive-rs/releases" \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \

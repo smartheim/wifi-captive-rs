@@ -2,35 +2,59 @@
 
 > WiFi service for Linux devices that opens an access point with a captive portal for easy network configuration from your mobile phone or laptop
 
-**Release note: This crate is not yet on crates.io. It relies on a few async/await modifications to
-the dbus crate. As soon as those are upstream a release is made.**
+**Release note: This crate contains a local copy of the dbus crate.
+It relies on a few [async/await modifications](doc/required_dbus_changes.md).
+As soon as those are upstream a new release is going out.**
 
-WiFi Connect is a utility for dynamically setting the WiFi configuration on a Linux device via a captive portal.
-WiFi credentials are specified by connecting with a mobile phone or laptop to the access point that WiFi Connect creates.
-The access point includes a simple DHCP server for assigning clients IP addresses
-and a DNS server for routing all pages to the captive portal. 
+WiFi Captive Portal is a utility for dynamically setting the WiFi configuration on a Linux device via a captive portal.
+A web-page allows to enter a WiFi SSID or select a network from a list.  
+
+This service includes a basic DHCP server for assigning IP addresses to connecting clients
+and a DNS server for redirecting all pages to the captive portal. 
 
 ## Table of Contents
 
 1. [Usage](#usage)
 1. [How it works](#how-it-works)
-1. [Not supported boards / dongles](#not-supported-boards-/-dongles)
 1. [Development, Get Involved](#development,-get-involved)
-    1. [System ports](#system-ports)
-    1. [Maintenance and future development](#maintenance-and-future-development)
+1. [System ports](#system-ports)
 1. [Acknowledgements](#acknowledgements)
     1. [Similar projects](#similar-projects)
 1. [FAQ](#faq)
 
 ## Usage
 
-**Compile** with `cargo build`. You need at least rust 1.39 or rust nightly after 2019.09.
+This software is written in [Rust](https://rustup.rs/) and support
+*NetworkManager* (Systemd-based OS),
+*iwd*,
+and *connman* (Newer, slim OS's)
+as network interface and wifi managers.
 
-**Start** with `RUST_LOG=info cargo run -- -l 3000 -g 127.0.0.1 --dns-port 1535 --dhcp-port 6767`,
-which doesn't require any permissions. The hotspot gateway is 127.0.0.1,
-the http portal will be on http://127.0.0.1:3000, the dns server is on 1535,
-the dhcp server on 6767. Logging is controlled by the `RUST_LOG` env variable.
+**Compile** with `cargo build`. You need at least Rust 1.39.
+The default is to use the *NetworkManager* backend.
+- If you want to to use [*iwd*](https://wiki.archlinux.org/index.php/Iwd), use `cargo build --features iwd --no-default-features`.
+- If you want to to use [*connman*](https://01.org/connman/documentation), use `cargo build --features connman --no-default-features`. 
+- Enable the "includeui" feature to embed the ui files into the binary.
+  No disk access necessary anymore. This is the default for release builds.
+  
+For software container deployment and cross-compiling read:
+[Advanced Deployments](doc/deployment.md).
+
+**Start** by first assigning your destination link a static IP (the gateway IP),
+ that must not collide with any later DHCP assigned IP. For an interface *wlp58s0* you might use:
+ `sudo ip address change 192.168.4.1/24 brd 192.168.4.255 dev wlp58s0`
+
+Logging is controlled by the `RUST_LOG` env variable.
 It can be set to DEBUG, INFO, WARN, ERROR. Default is ERROR.
+  
+Use `RUST_LOG=info cargo run -- -l 3000 -g 127.0.0.1 --dns-port 1535 --dhcp-port 6767` to start the service
+for testing without additional privileges.
+- The hotspot gateway is 127.0.0.1 and the http portal will be on http://127.0.0.1:3000,
+- the dns server is on 1535,
+- the dhcp server on 6767.
+
+For production build with `cargo build --release` and run with
+`sudo ./target/release/wifi-captive`. (You don't need to be root! Refer to [System ports](#system-ports)).
 
 ### Command line options
 
@@ -107,64 +131,55 @@ the command line option will take higher precedence.
 
 ## How it works
 
-WiFi Connect interacts via DBUS with network_manager, which must be the active network manager on the device's host OS.
+WiFi Connect interacts via DBUS with *NetworkManager* or *iwd* (*conman*).
+One of those network managers must be the active network manager on the device's host OS.
 
-### 1. Device Creates Access Point
+### 1. No connectivity / Connection lost
 
-**Only if** no ethernet connection can be found **and** no wifi connection is configured so far:
+**Only if** no connectivity is reported
+**and** no WiFi connection can be established for more than 20 seconds although one is configured:
 
-The application detects available WiFi networks and opens an access point with a captive portal.
+The application detects available WiFi networks and
+opens an access point with a captive portal.
 
-### 2. User Connects Phone to Device Access Point
-
-Connect to the opened access point on the device from your mobile phone or laptop.
 The access point ssid is, by default, `WiFi Connect` with no password.
 
-### 3. Phone Shows Captive Portal to User
+### 2. Captive Portal
 
-After connecting to the access point from a mobile phone, it will detect the captive portal and open its web page.
-Opening any web page will redirect to the captive portal as well.
+After connecting to the access point, all modern devices and operating systems
+will detect the captive portal and open its web page.
 
-### 4. User Enters Local WiFi Network Credentials
+Opening any non encrypted web page will redirect to the captive portal as well.
 
-The captive portal provides the option to select a WiFi ssid from a list with detected WiFi networks or to enter
-a ssid. If necessary a passphrase must be entered for the desired network.
+### 4. Enter WiFi Network Credentials
 
-### 5. Device Connects to Local WiFi Network
+The captive portal provides the option to select a WiFi from a list
+or enter a SSID directly.
+If necessary a passphrase must be entered for the desired network.
+WEP, WPA2 and WPA2 Enterprise are supported.
+
+### 5. Service Connects to WiFi Network
 
 When the network credentials have been entered,
 the service will disable the access point and try to connect to the network.
+
 If the connection fails, it will enable the access point for another attempt.
-If it succeeds, the configuration will be saved by network_manager.
-
-### 6. Connection Lost
-
-**Only if** no ethernet connection can be found **and** no WiFi connection can be established for more than 20 seconds although one is configured:
-
-The access point is opened again for reconfiguration, as described in *1. Advertise*.
-
-## Not supported boards / dongles
-
-The following dongles are known **not** to work with network_manager:
-
-* Official Raspberry Pi dongle (BCM43143 chip)
-* Addon NWU276 (Mediatek MT7601 chip)
-* Edimax (Realtek RTL8188CUS chip)
-
-Dongles with similar chipsets will probably not work.
+If it succeeds, the configuration will be saved by the used network backend,
+either network-manager or iwd.
 
 ## Development, Get Involved
 
 PRs are welcome. A PR is expected to be under the same license as the crate itself.
-This crate is using rusts async / await support (since Rust 1.38).
-Tokio 0.2 and futures 0.3 are used. A futures 0.1 compat dependency will not
-make a good PR candidate ;)
+This crate is using rusts async / await support (since Rust 1.39).
+Tokio 0.2 and futures 0.3 are used.
 
-There is not yet a full integration test. IMO a good one would fake network manager
-responses which requires a dbus service. The dbus crate is currently (as of Oct 2019)
-restructuring how dbus services are written.  
+The UI is html, css based on pure-css and vanilla javascript ES9.
 
-### System ports
+There is not yet a full integration test.
+IMO a good one would fake network manager responses which requires a dbus service.
+The dbus crate is currently (as of Nov 2019) restructuring how dbus services are written.  
+
+## System ports
 
 The default ports as mentioned above are:
 
@@ -189,14 +204,6 @@ sudo chown root:root scripts/set_net_cap && \
 sudo chmod +s scripts/set_net_cap
 ``` 
 
-### Maintenance and future development
-
-The application is considered almost finished. It will be adapted to newer
-dependency and rust versions. 
-
-"Almost", because one goal is, to statically compile the binary.
-This is not yet possible due to the dbus crate using the libdbus C-library.
-
 ## Acknowledgements
 
 * DHCP: Inspired by https://github.com/krolaw/dhcp4r (Richard Warburton).
@@ -204,14 +211,21 @@ This is not yet possible due to the dbus crate using the libdbus C-library.
 * DNS: Inspired by https://github.com/EmilHernvall/dnsguide/blob/master/samples/sample4.rs (Emil Hernvall). 
   The implemented version in this crate is rewritten. The Query, Record, Header and Packet
   data structures are similar. 
+* Dbus-rs: A great crate for interfacing DBus. 
 
 ### Similar projects
 
-There is also Wifi-Connect from <a href="https://balena.io">balena.io</a>.
-It is based on futures 0.1 and uses Iron as http server framework.
-It is not designed as long running background service, but quits after a connection
+There is also *Wifi-Connect*, also written in Rust, from <a href="https://balena.io">balena.io</a>.
+* It is based on futures 0.1 and uses Iron as http server framework.
+* It is not designed as long running background service. It quits after a connection
 has been established.
-It forces the user to be root (UID=0) and uses `dnsmasq` for dns and dhcp-ip provisioning. 
+* User must be root (UID=0). Uses an external tool (`dnsmasq`) for DNS and DHCP-IP provisioning.
+* It only supports *NetworkManger*. 
+
+A related set of utilities is [wifish](https://github.com/bougyman/wifish), a script with a TUI that
+talks to directly to wpa_supplicant. The user selects a wifi and the connection is established.
+And second [create_ap](https://github.com/oblique/create_ap), a script which uses *dnsmasq*, *hostapd*
+and *iw* under the hood to create an access point. 
 
 ## FAQ 
 
@@ -221,11 +235,13 @@ It forces the user to be root (UID=0) and uses `dnsmasq` for dns and dhcp-ip pro
   This service will try all known connections when in *reconnect* mode.
   
 * **Are 2.4Ghz / 5 Ghz access points with the same SSID used interchangeably?**
-  No. The user interface always shows the frequency of the selected access point
-  and exactly that one is stored and used. 
+  - For the network manager backend: No! The user interface always shows the frequency of the selected access point
+    and exactly that one is stored and used.
+  - For the iwd backend: Yes. For *iwd* the frequency doesn't matter.
 
 * **Does scanning work during hotspot mode?**
   Many network chipsets do not support that. If a second / other wireless chipsets
   are installed, those will be used instead for scanning.
+
 -----
  David Gräff, 2019

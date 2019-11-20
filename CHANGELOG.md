@@ -2,6 +2,13 @@
 
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.2.0 - 2019-11-20
+
+* Support iwd dbus API next to Network Manager:
+  - Generic API in `network_interface/*`
+  - Backend API in `nm/` and `iwd/`
+* Use stable Rust 1.39
+
 ## v0.1.0 - 2019-10-10
 
 First release

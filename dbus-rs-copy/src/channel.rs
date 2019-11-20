@@ -9,7 +9,6 @@ use std::ffi::CStr;
 use std::os::raw::{c_void, c_int};
 use crate::message::MatchRule;
 use std::os::unix::io::RawFd;
-use std::task::Waker;
 
 #[derive(Debug)]
 struct ConnHandle(*mut ffi::DBusConnection, bool);
@@ -312,6 +311,7 @@ impl Channel {
         }
     }
 
+    /// True if there are incoming queued messages
     pub fn incoming_queue_has_messages(&self) -> bool {
         let state =  unsafe {  ffi::dbus_connection_get_dispatch_status(self.conn()) };
         state == ffi::DBusDispatchStatus::DataRemains
@@ -418,6 +418,7 @@ impl Sender for std::cell::RefCell<Vec<Message>> {
 pub trait MatchingReceiver {
     /// Type of callback
     type F;
+    /// R type
     type R;
     /// Add a callback to be called in case a message matches.
     ///

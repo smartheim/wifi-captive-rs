@@ -1,0 +1,58 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+        "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+    <interface name="net.connman.iwd.Device">
+        <property name="Name" type="s" access="read"/>
+        <property name="Address" type="s" access="read"/>
+        <property name="WDS" type="b" access="readwrite"/>
+        <property name="Powered" type="b" access="readwrite"/>
+        <property name="Adapter" type="o" access="read"/>
+        <property name="Mode" type="s" access="readwrite"/>
+    </interface>
+    <interface name="net.connman.iwd.Station">
+        <method name="ConnectHiddenNetwork">
+            <arg name="name" type="s" direction="in"/>
+        </method>
+        <method name="Disconnect">
+        </method>
+        <method name="GetOrderedNetworks">
+            <arg name="networks" type="a(on)" direction="out"/>
+        </method>
+        <method name="GetHiddenAccessPoints">
+            <arg name="accesspoints" type="a(sns)" direction="out"/>
+        </method>
+        <method name="Scan">
+        </method>
+        <method name="RegisterSignalLevelAgent">
+            <arg name="path" type="o" direction="in"/>
+            <arg name="levels" type="an" direction="in"/>
+        </method>
+        <method name="UnregisterSignalLevelAgent">
+            <arg name="path" type="o" direction="in"/>
+        </method>
+        <property name="ConnectedNetwork" type="o" access="read"/>
+        <property name="Scanning" type="b" access="read"/>
+        <property name="State" type="s" access="read"/>
+    </interface>
+    <interface name="net.connman.iwd.WiFiSimpleConfiguration">
+        <method name="PushButton">
+        </method>
+        <method name="GeneratePin">
+            <arg name="pin" type="s" direction="out"/>
+        </method>
+        <method name="StartPin">
+            <arg name="pin" type="s" direction="in"/>
+        </method>
+        <method name="Cancel">
+        </method>
+    </interface>
+    <interface name="net.connman.iwd.AccessPoint">
+        <method name="Start">
+            <arg name="ssid" type="s" direction="in"/>
+            <arg name="wpa2_psk" type="s" direction="in"/>
+        </method>
+        <method name="Stop">
+        </method>
+        <property name="Started" type="b" access="read"/>
+    </interface>
+</node>

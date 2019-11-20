@@ -1,0 +1,12 @@
+prefix=/home/david/Programming/ohx/wifi-captive-rs/target/libdbus/armv7l
+exec_prefix=${prefix}
+libdir=${prefix}/lib/armv7l-linux-musleabihf
+includedir=${prefix}/include
+
+Name: dbus-1
+Description: Static dbus library
+Version: 1.13
+Requires.private:
+Libs: -L/home/david/Programming/ohx/wifi-captive-rs/target/libdbus
+Libs.private: -lgcc -ldbus_static_armv7l
+Cflags: -I${includedir}

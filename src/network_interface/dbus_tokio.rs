@@ -12,12 +12,16 @@ use std::sync::{Arc, Mutex};
 use std::{future, pin, task};
 
 use dbus::message::{MatchRule, SignalArgs};
-use futures_core::Poll;
+use futures_core::task::Poll;
 use std::collections::VecDeque;
+use std::os::unix::io::FromRawFd;
 use std::pin::Pin;
 use std::task::Waker;
 use tokio::stream::Stream;
-use tokio_net::driver::Registration;
+use tokio_net::util::PollEvented;
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+//use mio::Registration;
 
 /// The I/O Resource should be spawned onto a Tokio compatible reactor.
 ///
@@ -26,7 +30,7 @@ use tokio_net::driver::Registration;
 /// contact with the D-Bus server.
 pub struct IOResource<C> {
     connection: Arc<C>,
-    registration: Registration,
+    io: PollEvented<mio_uds::UnixStream>,
 }
 
 impl<C: AsRef<Channel> + Process> IOResource<C> {
@@ -34,17 +38,14 @@ impl<C: AsRef<Channel> + Process> IOResource<C> {
         &self,
         ctx: &mut task::Context<'_>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Waker for writes
         self.connection.set_waker(ctx.waker().clone());
 
         let c: &Channel = (*self.connection).as_ref();
-        let w = c.watch();
-        let r = &self.registration;
-        r.register(&mio::unix::EventedFd(&w.fd))?;
 
-        //r.take_read_ready()?;
         let mut has_flushed = false;
         const TIMEOUT_SECS: std::time::Duration = std::time::Duration::from_secs(5);
-        while let Poll::Ready(_) = r.poll_read_ready(ctx)? {
+        while let Poll::Ready(_) = self.io.poll_read_ready(ctx, mio::Ready::readable())? {
             has_flushed = true;
             c.read_write(Some(TIMEOUT_SECS))
                 .map_err(|_| Error::new_failed("Read/write failed"))?;
@@ -60,7 +61,6 @@ impl<C: AsRef<Channel> + Process> IOResource<C> {
         }
 
         self.connection.drops(ctx);
-
         Ok(())
     }
 }
@@ -79,12 +79,14 @@ impl<C: AsRef<Channel> + Process> future::Future for IOResource<C> {
 pub fn new<C: From<Channel>>(b: BusType) -> Result<(IOResource<C>, Arc<C>), Error> {
     let mut channel = Channel::get_private(b)?;
     channel.set_watch_enabled(true);
+    let w = channel.watch();
 
     let conn = Arc::new(C::from(channel));
     let res = IOResource {
         connection: conn.clone(),
-        registration: Registration::new(),
+        io: PollEvented::new(unsafe { mio_uds::UnixStream::from_raw_fd(w.fd) }),
     };
+
     Ok((res, conn))
 }
 
@@ -107,17 +109,11 @@ pub fn new_system_sync() -> Result<(IOResource<SyncConnection>, Arc<SyncConnecti
     new(BusType::System)
 }
 
-use lazy_static::*;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-lazy_static! {
-    static ref GLOBAL: AtomicUsize = AtomicUsize::new(1);
-}
+static GLOBAL: AtomicUsize = AtomicUsize::new(1);
 
 struct SignalStreamState<U, T> {
     signal_queue: VecDeque<dbus::Message>,
     waker: Option<Waker>,
-    done: bool,
     mapper: Box<dyn Fn(U) -> T + Send + 'static>,
 }
 
@@ -131,8 +127,8 @@ pub struct SignalStream<U, T> {
 }
 
 impl<U: SignalArgs + 'static, T: Sized + 'static> Stream for SignalStream<U, T>
-    where
-        U: dbus::arg::ReadAll,
+where
+    U: dbus::arg::ReadAll,
 {
     type Item = (T, String);
     fn poll_next(self: Pin<&mut Self>, ctx: &mut task::Context) -> task::Poll<Option<Self::Item>> {
@@ -148,9 +144,6 @@ impl<U: SignalArgs + 'static, T: Sized + 'static> Stream for SignalStream<U, T>
                     .and_then(|f| Some(f.to_string()))
                     .unwrap_or_default(),
             )));
-        }
-        if state.done {
-            return task::Poll::Ready(None);
         }
         state.waker = Some(ctx.waker().clone());
         task::Poll::Pending
@@ -174,7 +167,6 @@ impl<U: SignalArgs + 'static, T: Sized + 'static> SignalStream<U, T> {
         let state = Arc::new(Mutex::new(SignalStreamState {
             signal_queue: Default::default(),
             waker: None,
-            done: false,
             mapper,
         }));
         let state_clone = state.clone();
@@ -206,13 +198,6 @@ impl<U: SignalArgs + 'static, T: Sized + 'static> SignalStream<U, T> {
 impl<U, T> Drop for SignalStream<U, T> {
     fn drop(&mut self) {
         self.rule_handler = 0;
-        {
-            let mut state = self
-                .state
-                .lock()
-                .expect("Unlock mutex stream state in Drop");
-            state.done = true;
-        }
         let stream_id = self.stream_id;
         self.connection.stop_receive(self.rule_handler);
 

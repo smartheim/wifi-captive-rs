@@ -26,6 +26,7 @@ mod generated_org_freedesktop_dbus;
 ///
 /// The code was created by dbus-codegen.
 pub mod stdintf {
+    /// Internal
     pub mod org_freedesktop_dbus {
         pub use super::super::generated_org_freedesktop_notifications::*;
         pub use super::super::generated_org_freedesktop_dbus::*;
@@ -113,6 +114,7 @@ impl Sender for SyncConnection {
 pub trait NonblockReply {
     /// Callback type
     type F;
+    /// R type
     type R;
     /// Sends a message and calls the callback when a reply is received.
     fn send_with_reply(&self, msg: Message, f: Self::F) -> Result<u32, ()>;
@@ -230,6 +232,7 @@ pub trait Process: Sender + AsRef<Channel> {
     /// Sets the waker that will be used by [`send`] to schedule a dbus socket write.
     fn set_waker(&self, waker: Waker);
 
+    /// Drops
     fn drops(&self, ctx: &mut task::Context<'_>);
 }
 
@@ -262,7 +265,7 @@ impl Process for LocalConnection {
         }
     }
 
-    fn drops(&self, ctx: &mut Context<'_>) {
+    fn drops(&self, _ctx: &mut Context<'_>) {
         unimplemented!()
     }
 }
@@ -299,7 +302,6 @@ impl Process for SyncConnection {
 
     fn drops(&self, ctx: &mut Context<'_>) {
         use std::future::Future;
-        use std::ops::Deref;
 
         let mut drop = self.drop.lock().unwrap();
         let mut a = drop.drain(..).filter_map(|(match_str, mut method_reply)| {

@@ -1,0 +1,11 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+        "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+    <interface name="net.connman.iwd.Adapter">
+        <property name="Powered" type="b" access="readwrite"/>
+        <property name="Model" type="s" access="read"/>
+        <property name="Vendor" type="s" access="read"/>
+        <property name="Name" type="s" access="read"/>
+        <property name="SupportedModes" type="as" access="read"/>
+    </interface>
+</node>

@@ -17,7 +17,6 @@ pub enum CaptivePortalError {
     GenericO(String),
     /// Serialisation failed
     Ser(serde_json::Error),
-    Ascii(ascii::AsAsciiStrError),
     Utf8(std::str::Utf8Error),
     // Name, Message
     DBus(String, String),
@@ -25,6 +24,7 @@ pub enum CaptivePortalError {
     IO(std::io::Error),
     Hyper(hyper::error::Error),
     RecvError(std::sync::mpsc::RecvError),
+    NotInStationMode,
 }
 
 impl Unpin for CaptivePortalError {}
@@ -52,6 +52,7 @@ impl std::convert::From<hyper::header::ToStrError> for CaptivePortalError {
         CaptivePortalError::GenericO(error.to_string())
     }
 }
+
 impl std::convert::From<std::string::String> for CaptivePortalError {
     fn from(error: std::string::String) -> Self {
         CaptivePortalError::GenericO(error)
@@ -78,12 +79,6 @@ impl std::convert::From<serde_json::Error> for CaptivePortalError {
     }
 }
 
-impl std::convert::From<ascii::AsAsciiStrError> for CaptivePortalError {
-    fn from(error: ascii::AsAsciiStrError) -> Self {
-        CaptivePortalError::Ascii(error)
-    }
-}
-
 impl std::convert::From<std::str::Utf8Error> for CaptivePortalError {
     fn from(error: std::str::Utf8Error) -> Self {
         CaptivePortalError::Utf8(error)
@@ -106,13 +101,15 @@ impl fmt::Display for CaptivePortalError {
             CaptivePortalError::GenericO(ref m) => write!(f, "{}", m),
             CaptivePortalError::IO(ref e) => e.fmt(f),
             CaptivePortalError::Hyper(ref e) => e.fmt(f),
-            CaptivePortalError::Ascii(ref e) => e.fmt(f),
             CaptivePortalError::Utf8(ref e) => e.fmt(f),
             CaptivePortalError::DBus(ref name, ref msg) => {
                 write!(f, "Dbus Error: {} - {}", name, msg)
             },
             CaptivePortalError::Ser(ref e) => e.fmt(f),
             CaptivePortalError::RecvError(ref e) => e.fmt(f),
+            CaptivePortalError::NotInStationMode => {
+                write!(f, "Scanning not possible: Not in station mode!")
+            },
         }
     }
 }
@@ -120,15 +117,12 @@ impl fmt::Display for CaptivePortalError {
 impl error::Error for CaptivePortalError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            CaptivePortalError::Generic(ref _m) => None,
-            CaptivePortalError::GenericO(ref _m) => None,
             CaptivePortalError::IO(ref e) => Some(e),
             CaptivePortalError::Hyper(ref e) => Some(e),
-            CaptivePortalError::Ascii(ref e) => Some(e),
             CaptivePortalError::Utf8(ref e) => Some(e),
-            CaptivePortalError::DBus(_, _) => None,
             CaptivePortalError::Ser(ref e) => Some(e),
             CaptivePortalError::RecvError(ref e) => Some(e),
+            _ => None,
         }
     }
 }

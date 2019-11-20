@@ -5,19 +5,9 @@
 #[macro_use]
 extern crate log;
 
-mod config;
-mod errors;
-pub(in crate) mod nm;
-mod portal;
-mod state_machine;
-mod utils;
-
-mod dhcp_server;
-mod dns_server;
-mod http_server;
+use wifi_captive::*;
 
 use env_logger::Env;
-pub use errors::*;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use structopt::StructOpt;
 
@@ -26,8 +16,12 @@ pub async fn test_udp(server_addr: SocketAddrV4) -> Result<(), CaptivePortalErro
     let socket = tokio::net::UdpSocket::bind(SocketAddr::V4(server_addr.clone()))
         .await
         .map_err(|_| {
-            CaptivePortalError::GenericO(format!("Could not bind to {:?}\nEither the port is blocked or permissions are required.\n\
-            You may use `sudo setcap CAP_NET_BIND_SERVICE=+eip {}`", server_addr, std::env::args().next().unwrap_or_default()))
+            CaptivePortalError::GenericO(format!(
+                "Could not bind to {:?}\nEither the port is blocked or permissions are required.\n\
+                 You may use `sudo setcap CAP_NET_BIND_SERVICE=+eip {}`",
+                server_addr,
+                std::env::args().next().unwrap_or_default()
+            ))
         })?;
     socket.set_broadcast(true)?;
     Ok(())
@@ -59,15 +53,18 @@ async fn main_inner() -> Result<(), Box<dyn std::error::Error>> {
     test_udp(SocketAddrV4::new(
         Ipv4Addr::new(127, 0, 0, 1),
         config.dns_port,
-    )).await?;
+    ))
+    .await?;
     test_udp(SocketAddrV4::new(
         Ipv4Addr::new(127, 0, 0, 1),
         config.dhcp_port,
-    )).await?;
+    ))
+    .await?;
     test_tcp(SocketAddrV4::new(
         Ipv4Addr::new(127, 0, 0, 1),
         config.listening_port,
-    )).await?;
+    ))
+    .await?;
 
     let mut sm = state_machine::StateMachine::StartUp(config.clone());
 

@@ -2,17 +2,26 @@
 #![cfg_attr(feature = "external_doc", doc(include = "../readme.md"))]
 #![feature(drain_filter)]
 
-// The library version of this crate only exposes a subset of the features for the examples.
-
 #[macro_use]
 extern crate log;
 
 mod errors;
-mod nm;
+mod network_interface;
 mod utils;
 
-pub mod lib {
-    pub use super::nm::*;
-    pub use super::utils::*;
-}
+pub mod config;
+pub mod portal;
+pub mod state_machine;
+
+pub mod dhcp_server;
+pub mod dns_server;
+pub mod http_server;
+
+pub mod network_backend;
+pub use network_backend::NetworkBackend;
+
+pub use network_interface::*;
+pub use utils::*;
+
+/// Re-export error type
 pub use errors::CaptivePortalError;

@@ -1,9 +1,9 @@
-use wifi_captive::lib::{NetworkManager, print_connection_changes};
+use wifi_captive::NetworkBackend;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let manager = NetworkManager::new(&None).await?;
-    print_connection_changes(&manager).await?;
+    let manager = NetworkBackend::new(&None).await?;
+    manager.print_connection_changes().await?;
 
     Ok(())
 }

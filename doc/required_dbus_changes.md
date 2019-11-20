@@ -1,4 +1,4 @@
-# Required dbus changes
+# Required dbus crate changes
 
 * Access to add_match, remove_match
 * Process trait: Add "drops" method to resolve outstanding method-replies

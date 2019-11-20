@@ -1,0 +1,13 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+        "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+    <interface name="net.connman.iwd.KnownNetwork">
+        <method name="Forget">
+        </method>
+        <property name="Name" type="s" access="read"/>
+        <property name="Type" type="s" access="read"/>
+        <property name="Hidden" type="b" access="read"/>
+        <property name="Autoconnect" type="b" access="readwrite"/>
+        <property name="LastConnectedTime" type="s" access="read"/>
+    </interface>
+</node>

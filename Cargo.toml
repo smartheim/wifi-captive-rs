@@ -1,11 +1,11 @@
 [package]
 name = "wifi-captive"
-version = "4.3.0"
+version = "0.2.0"
 authors = ["David Graeff <david.graeff@web.de>"]
 description = "Wifi Setup service with captive portal. Requires the network manager DBUS API and linux NET_BINDSERVICE sys capability."
 readme = "readme.md"
-homepage = "https://github.com/openhab-nodes/ohx-os/wifi-connect"
-repository = "https://github.com/openhab-nodes/ohx-os"
+homepage = "https://github.com/openhab-nodes/wifi-captive-rs"
+repository = "https://github.com/openhab-nodes/wifi-captive-rs"
 keywords = ["network_manager", "network-manager", "networking", "Wi-Fi", "wifi"]
 categories = ["api-bindings", "network-programming", "os::unix-apis"]
 license = "Apache-2.0"
@@ -21,33 +21,26 @@ env_logger = "0.7.0"
 nix = "0.15.0"
 structopt = "0.3.2"
 
-bitflags = "1.2.0"
-ascii = "1.0.0"
-bitintr = "0.3.0"
-
 # Async
+#futures-core =  { version = "^0.3.0"}
+#futures-util =  { version = "^0.3.0"}
+#futures-channel =  { version = "^0.3.0"}
 futures-core =  { version = "^0.3.0-alpha.18", package = "futures-core-preview"}
 futures-util =  { version = "^0.3.0-alpha.18", package = "futures-util-preview"}
 futures-channel =  { version = "^0.3.0-alpha.18", package = "futures-channel-preview"}
 tokio-net = {version="0.2.0-alpha.6",features = ["signal"]}
-tokio-timer = "0.3.0-alpha.6"
-tokio = { version = "0.2.0-alpha.6", features = ["sync"] }
+tokio = { version = "0.2.0-alpha.6", features = ["sync","net","signal","timer"] }
 pin-utils = "0.1.0-alpha.4"
-mio = "0.6.19"
 
 # Network manager
 dbus = "^0"
-enumflags2 = "0.6.0"
-lazy_static = "1.4.0"
-
-# dhcp server
-enum-primitive-derive = "0.1.2"
-num-traits = "0.2.8"
+mio = "0.6.19" # for dbus_tokio.rs
+mio-uds = "0.6.7"
+enumflags2 = "0.6.2"
 
 # Web server
 hyper = "0.13.0-alpha.4"
-mime_guess = "2.0.1"
-include_dir = "0.2.1"
+include_dir = {version="0.2.1",optional=true}
 chrono = "0.4.9"
 
 # Render the readme file on doc.rs
@@ -55,13 +48,19 @@ chrono = "0.4.9"
 features = [ "external_doc", "rocket_support" ]
 
 [patch.crates-io]
-#dbus = { git = 'https://github.com/diwic/dbus-rs' }
 dbus = { path = './dbus-rs-copy' }
+#dbus = { git = 'https://github.com/diwic/dbus-rs' }
 
 [features]
-default = []
-includeui = []
+default = ["networkmanager"]
+includeui = ["include_dir"]
+networkmanager = []
+iwd = []
 
 [profile.release]
 lto = true
 
+[badges]
+is-it-maintained-open-issues = { repository = "openhab-nodes/wifi-captive-rs" }
+is-it-maintained-issue-resolution = { repository = "openhab-nodes/wifi-captive-rs" }
+maintenance = { status = "actively-developed" }

@@ -475,13 +475,3 @@ impl fmt::Display for TypeMismatchError {
 }
 
 
-#[allow(dead_code)]
-fn test_compile() {
-    let mut q = IterAppend::new(unsafe { mem::transmute(0usize) });
-
-    q.append(5u8);
-    q.append(Array::new(&[5u8, 6, 7]));
-    q.append((8u8, &[9u8, 6, 7][..]));
-    q.append(Variant((6u8, 7u8)));
-}
-

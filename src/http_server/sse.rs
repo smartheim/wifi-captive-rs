@@ -7,7 +7,7 @@
 use hyper::{Body, Chunk, Response};
 use std::net::IpAddr;
 
-use crate::nm::WifiConnectionEvent;
+use crate::network_interface::WifiConnectionEvent;
 use std::collections::LinkedList;
 
 pub type Clients = LinkedList<Client>;

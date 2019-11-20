@@ -18,7 +18,8 @@ use futures_util::future::Either;
 use futures_util::try_future::try_select;
 use serde::Deserialize;
 
-use super::nm::{NetworkManager, NetworkManagerEvent, WifiConnectionEvent, WifiConnections};
+use super::network_backend::NetworkBackend;
+use super::network_interface::{WifiConnectionEvent, WifiConnectionEventType, WifiConnections};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -52,7 +53,7 @@ pub struct HttpServerState {
     pub connections: WifiConnections,
     pub server_addr: SocketAddrV4,
     pub sse: sse::Clients,
-    pub network_manager: NetworkManager,
+    pub network_manager: NetworkBackend,
 }
 
 /// The thread safe wrapper around the http server state.
@@ -165,7 +166,7 @@ impl HttpServer {
     /// A tuple (http_server, exit handler) is returned. Call the exit handler for a graceful shutdown.
     pub fn new(
         server_addr: SocketAddrV4,
-        nm: NetworkManager,
+        nm: NetworkBackend,
         ui_path: PathBuf,
     ) -> (HttpServer, tokio::sync::oneshot::Sender<()>) {
         let (tx, exit_handler) = tokio::sync::oneshot::channel::<()>();
@@ -234,7 +235,7 @@ impl HttpServer {
             // Endless loop to send ping events ...
             loop {
                 // ... every 2 seconds
-                let sleep = tokio_timer::delay_for(Duration::from_secs(2));
+                let sleep = tokio::timer::delay_for(Duration::from_secs(2));
                 pin_mut!(sleep);
                 // If the exit handler is called or dropped however, quit the loop
                 let r = futures_util::future::select(sleep, &mut keep_alive_exit_handler).await;
@@ -310,14 +311,14 @@ pub async fn update_network(http_state: HttpServerStateSync, event: WifiConnecti
     {
         Some(pos) => {
             match event.event {
-                NetworkManagerEvent::Added => {
+                WifiConnectionEventType::Added => {
                     use std::mem;
                     let dest = connections
                         .get_mut(pos)
                         .expect("update_network: Vector access on connections");
                     mem::replace(dest, event.connection.clone());
                 },
-                NetworkManagerEvent::Removed => {
+                WifiConnectionEventType::Removed => {
                     connections.remove(pos);
                 },
             };

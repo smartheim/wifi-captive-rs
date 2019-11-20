@@ -1,10 +1,9 @@
 //! # This module contains the portal type.
 
-use super::http_server::{HttpServerStateSync, WifiConnectionRequest};
-use super::nm::{
-    on_active_connection_state_change, AccessPointChangeReturnType, ConnectionState,
-    NetworkManager, WifiConnection, WifiConnectionEvent,
-};
+use super::http_server::WifiConnectionRequest;
+use super::network_backend::{AccessPointsChangedStream, NetworkBackend};
+use super::network_interface::WifiConnection;
+use super::utils::take_optional;
 use super::{dhcp_server, dns_server, http_server, CaptivePortalError};
 
 use futures_core::future::BoxFuture;
@@ -41,10 +40,10 @@ pub struct Portal<'a> {
     /// The timeout future. Will be polled by this wrapping future.
     timeout: Option<Delay>,
     /// The connection changed future. Will be polled by this wrapping future.
-    connection_state_change_fut: Option<BoxFuture<'a, Result<ConnectionState, CaptivePortalError>>>,
+    hotspot_stopped_fut: Option<BoxFuture<'a, Result<(), CaptivePortalError>>>,
     /// The http server future. Will be polled by this wrapping future.
     http_server: Pin<
-        Box<dyn Future<Output = Result<Option<WifiConnectionRequest>, CaptivePortalError>> + Send>,
+        Box<dyn Future<Output=Result<Option<WifiConnectionRequest>, CaptivePortalError>> + Send>,
     >,
 }
 
@@ -52,7 +51,7 @@ impl<'a> Portal<'a> {
     /// The configuration should contain a ui_directory, if the UI is not embedded. If that is not set,
     /// the environment variable CARGO_MANIFEST_DIR will be used, which is only useful during development.
     pub fn new(
-        nm: &'a NetworkManager,
+        nm: &'a NetworkBackend,
         config: &crate::config::Config,
         wifi_sta_active_connection: dbus::Path<'static>,
         wifi_access_points: Vec<WifiConnection>,
@@ -99,19 +98,23 @@ impl<'a> Portal<'a> {
         });
 
         let nm_clone = nm.clone();
-        let state_clone = http_state.clone();
         tokio::spawn(async move {
-            let c = nm_clone.on_access_point_list_changes().await;
-            match c {
+            let stream = AccessPointsChangedStream::new(&nm_clone).await;
+            let mut stream = match stream {
                 Err(e) => {
                     error!("{}", e);
-                },
-                Ok(mut c) => {
-                    while let Ok(_) =
-                        next_access_point_changed(&nm_clone, &mut c, state_clone.clone()).await
-                    {
+                    return;
+                }
+                Ok(stream) => stream,
+            };
+            for event in stream.next().await {
+                match event {
+                    Err(e) => {
+                        error!("{}", e);
+                        return;
                     }
-                },
+                    Ok(event) => http_server::update_network(http_state.clone(), event).await,
+                }
             }
         });
 
@@ -124,49 +127,11 @@ impl<'a> Portal<'a> {
             exit_receiver: Some(exit_receiver),
             http_exit: Some(http_exit),
             timeout: Some(tokio::timer::delay_for(timeout)),
-            connection_state_change_fut: Some(
-                on_active_connection_state_change(nm, wifi_sta_active_connection).boxed(),
-            ),
+            hotspot_stopped_fut: Some(nm.on_hotspot_stopped(wifi_sta_active_connection).boxed()),
         };
 
         Ok((portal, exit_handler))
     }
-}
-
-/// Return a future that resolves on the next access point that got discovered / disappeared.
-async fn next_access_point_changed(
-    nm: &NetworkManager,
-    access_point_changes_fut: &mut AccessPointChangeReturnType,
-    http_state: HttpServerStateSync,
-) -> Result<(), CaptivePortalError> {
-    let (access_point_changed, _path) = match access_point_changes_fut.next().await {
-        Some(next) => next,
-        None => return Ok(()),
-    };
-
-    let ap = nm.access_point(access_point_changed.path).await?;
-    if let Some(ap) = ap {
-        let event = WifiConnectionEvent {
-            connection: ap,
-            event: access_point_changed.event,
-        };
-        http_server::update_network(http_state.clone(), event).await;
-    }
-    Ok(())
-}
-
-/// Takes an optional field member of the portal and sets the optional to None.
-///
-/// Safety: Because the optional fields are never moved, this is considered safe, albeit the pinning.
-fn take_optional<'a, F, X>(mut portal: Pin<&mut Portal<'a>>, fun: F)
-where
-    F: for<'r> FnOnce(&'r mut Portal<'a>) -> &'r mut Option<X>,
-    X: Unpin + 'a,
-{
-    // Safety: we never move `self.value` (the Optional)
-    let exit_receiver = unsafe { portal.as_mut().map_unchecked_mut(fun) };
-    // Remove future out of optional
-    let _ = exit_receiver.get_mut().take();
 }
 
 /// The portal is also a future. It polls on various exit conditions like the timeout,
@@ -189,10 +154,10 @@ impl<'a> Future for Portal<'a> {
             }
         }
 
-        if let Some(connection_state_change_fut) = self.connection_state_change_fut.as_mut() {
+        if let Some(connection_state_change_fut) = self.hotspot_stopped_fut.as_mut() {
             if let Poll::Ready(_) = connection_state_change_fut.as_mut().poll(cx) {
                 exit_soon = true;
-                take_optional(self.as_mut(), |me| &mut me.connection_state_change_fut);
+                take_optional(self.as_mut(), |me| &mut me.hotspot_stopped_fut);
             }
         }
 

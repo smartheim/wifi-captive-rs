@@ -1,6 +1,3 @@
-use enum_primitive_derive::Primitive;
-use num_traits::FromPrimitive;
-
 pub struct DhcpOption<'a> {
     pub code: u8,
     pub data: &'a [u8],
@@ -240,7 +237,6 @@ pub fn title(code: u8) -> Option<&'static str> {
 /// > This option is used to convey the type of the DHCP message.  The code for this option is 53,
 /// > and its length is 1.
 ///
-#[derive(Primitive)]
 pub enum MessageType {
     /// Client broadcast to locate available servers.
     Discover = 1,
@@ -274,8 +270,22 @@ pub enum MessageType {
 
 impl MessageType {
     pub fn from(val: u8) -> Result<MessageType, CaptivePortalError> {
-        MessageType::from_u8(val).ok_or_else(|| {
-            CaptivePortalError::GenericO(format!["Invalid DHCP Message Type: {:?}", val])
-        })
+        let val = match val {
+            1 => MessageType::Discover,
+            2 => MessageType::Offer,
+            3 => MessageType::Request,
+            4 => MessageType::Decline,
+            5 => MessageType::Ack,
+            6 => MessageType::Nak,
+            7 => MessageType::Release,
+            8 => MessageType::Inform,
+            _ => {
+                return Err(CaptivePortalError::GenericO(format![
+                    "Invalid DHCP Message Type: {:?}",
+                    val
+                ]))
+            },
+        };
+        Ok(val)
     }
 }

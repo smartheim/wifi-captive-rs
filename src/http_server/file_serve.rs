@@ -14,23 +14,40 @@ const PROJECT_DIR: include_dir::Dir = include_dir!("ui");
 /// The file wrapper struct deals with the fact that we either read a file from the filesystem
 /// or use a binary embedded variant. That means we either allocate a vector for the file content,
 /// or use a pointer to the data without any allocation.
+#[cfg(feature = "includeui")]
+struct FileWrapper {
+    path: PathBuf,
+    embedded_file: include_dir::File<'static>,
+}
+
+#[cfg(not(feature = "includeui"))]
 struct FileWrapper {
     path: PathBuf,
     contents: Vec<u8>,
-    embedded_file: Option<include_dir::File<'static>>,
 }
 
+#[cfg(feature = "includeui")]
 impl<'a> FileWrapper {
-    #[cfg(feature = "includeui")]
     pub fn from_included(file: &include_dir::File) -> FileWrapper {
         Self {
             path: PathBuf::from(file.path),
-            contents: Vec::with_capacity(0),
-            embedded_file: Some(file.clone()),
+            embedded_file: file.clone(),
         }
     }
 
-    #[cfg(not(feature = "includeui"))]
+    pub fn path(&'a self) -> &'a Path {
+        self.embedded_file.path()
+    }
+
+    /// The file's raw contents.
+    /// This method consumes the file wrapper
+    pub fn contents(self) -> Body {
+        Body::from(self.embedded_file.contents)
+    }
+}
+
+#[cfg(not(feature = "includeui"))]
+impl<'a> FileWrapper {
     pub fn from_filesystem(root: &Path, path: &str) -> Option<FileWrapper> {
         use std::fs;
         let file = root.join("ui").join(path);
@@ -38,25 +55,28 @@ impl<'a> FileWrapper {
             Some(FileWrapper {
                 path: file,
                 contents: buf,
-                embedded_file: None,
             })
         })
     }
 
     pub fn path(&'a self) -> &'a Path {
-        match self.embedded_file {
-            Some(f) => f.path(),
-            None => &self.path,
-        }
+        &self.path
     }
 
     /// The file's raw contents.
     /// This method consumes the file wrapper
     pub fn contents(self) -> Body {
-        match self.embedded_file {
-            Some(f) => Body::from(f.contents),
-            None => Body::from(self.contents),
-        }
+        Body::from(self.contents)
+    }
+}
+
+fn mime_type_from_ext(ext: &str) -> &str {
+    match ext {
+        "html" => "text/html",
+        "js" => "application/javascript",
+        "png" => "image/png",
+        "css" => "text/css",
+        _ => "application/octet-stream",
     }
 }
 
@@ -102,20 +122,13 @@ pub fn serve_file(
     // Serve UI
     if let Some(file) = file {
         let mime = match file.path().extension() {
-            Some(ext) => {
-                match mime_guess::from_ext(ext.to_str().expect("file path extension OsStr->str"))
-                    .first()
-                {
-                    Some(v) => v.to_string(),
-                    None => "application/octet-stream".to_owned(),
-                }
-            },
-            None => "application/octet-stream".to_owned(),
+            Some(ext) => mime_type_from_ext(ext.to_str().expect("file path extension OsStr->str")),
+            None => "application/octet-stream",
         };
         info!("Serve {} for {}", mime, path);
         response.headers_mut().append(
             "Content-Type",
-            HeaderValue::from_str(&mime).expect("mime to header value"),
+            HeaderValue::from_str(mime).expect("mime to header value"),
         );
         *response.body_mut() = file.contents();
         return Ok(response);
