@@ -50,14 +50,12 @@ impl<C: AsRef<Channel> + Process> IOResource<C> {
             c.read_write(Some(TIMEOUT_SECS))
                 .map_err(|_| Error::new_failed("Read/write failed"))?;
             self.connection.process_all();
-            //println!("read/write");
         }
 
         if !has_flushed {
             c.read_write(Some(TIMEOUT_SECS))
                 .map_err(|_| Error::new_failed("Read/write failed"))?;
             self.connection.process_all();
-            //println!("flush");
         }
 
         self.connection.drops(ctx);

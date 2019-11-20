@@ -3,6 +3,8 @@
 use std::io::Result;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
+use log::info;
+
 use super::byte_buffer::BytePacketBuffer;
 use super::dns_query::QueryType;
 
@@ -231,7 +233,7 @@ impl DnsRecord {
                 }
             },
             DnsRecord::UNKNOWN { .. } => {
-                println!("Skipping record: {:?}", self);
+                info!("Skipping record: {:?}", self);
             },
         }
 

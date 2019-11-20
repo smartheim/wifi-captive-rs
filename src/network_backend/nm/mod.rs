@@ -112,9 +112,10 @@ impl NetworkBackend {
     /// Scan for access points if the last scan is older than 10 seconds
     pub async fn scan_networks(&self) -> Result<(), CaptivePortalError> {
         let p = nonblock::Proxy::new(NM_BUSNAME, self.wifi_device_path.clone(), self.conn.clone());
-        use chrono::{Duration, DateTime,Utc,NaiveDateTime};
+        use chrono::{DateTime, Duration, NaiveDateTime, Utc};
         use device::DeviceWireless;
-        let scan_time = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(p.last_scan().await?, 0), Utc);
+        let scan_time =
+            DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(p.last_scan().await?, 0), Utc);
         if (Utc::now() - scan_time) > Duration::seconds(10) {
             // request_scan requires a hashmap of dbus::arg::RefArg parameters as argument.
             // Those are not thread safe, eg implement Send, so cannot be wrapped as intermediate state in the
@@ -195,7 +196,7 @@ impl NetworkBackend {
         // try to find connection, update it, activate it and return the connection path
         let active_connection = if let Some(hw) = hw {
             if let Some((connection_path, old_connection)) =
-            self.find_connection_by_mac(&hw).await?
+                self.find_connection_by_mac(&hw).await?
             {
                 Some(
                     self.update_connection(
@@ -204,14 +205,14 @@ impl NetworkBackend {
                         old_connection,
                         credentials.clone(),
                     )
-                        .await?,
+                    .await?,
                 )
             } else {
                 None
             }
         } else if overwrite_same_ssid_connection {
             if let Some((connection_path, old_connection)) =
-            self.find_connection_by_ssid(&ssid).await?
+                self.find_connection_by_ssid(&ssid).await?
             {
                 Some(
                     self.update_connection(
@@ -220,7 +221,7 @@ impl NetworkBackend {
                         old_connection,
                         credentials.clone(),
                     )
-                        .await?,
+                    .await?,
                 )
             } else {
                 None
@@ -291,7 +292,7 @@ impl NetworkBackend {
                 SAVE_TO_DISK_FLAG,
                 VariantMap::new(),
             )
-                .await?;
+            .await?;
             return Ok(Some(ActiveConnection {
                 connection_path: connection_path.into_static(),
                 active_connection_path: active_connection.into_static(),

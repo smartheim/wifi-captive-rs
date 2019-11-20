@@ -3,15 +3,15 @@
 //! This contains implementation specific bits only.
 
 use super::NM_BUSNAME;
-use enumflags2::BitFlags;
 use dbus::nonblock;
 use dbus::nonblock::SyncConnection;
+use enumflags2::BitFlags;
 //use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use crate::Security;
+use std::sync::Arc;
 
 #[allow(non_camel_case_types)]
-#[derive(BitFlags,Copy,Clone)]
+#[derive(BitFlags, Copy, Clone)]
 #[repr(u32)]
 pub(crate) enum NM80211ApFlags {
     // access point has no special capabilities
@@ -27,7 +27,7 @@ pub(crate) enum NM80211ApFlags {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(BitFlags,Copy,Clone)]
+#[derive(BitFlags, Copy, Clone)]
 #[repr(u32)]
 pub(crate) enum NM80211ApSecurityFlags {
     // the access point has no special security requirements
@@ -62,15 +62,16 @@ pub(crate) async fn get_access_point_security(
 ) -> Result<Security, super::CaptivePortalError> {
     let access_point_data = nonblock::Proxy::new(NM_BUSNAME, ap_path, conn.clone());
     use super::access_point::AccessPoint;
-    let flags: BitFlags<NM80211ApFlags> = BitFlags::from_bits(access_point_data.flags().await?)
-        .unwrap_or(BitFlags::empty());
-    let wpa_flags: BitFlags<NM80211ApSecurityFlags> = BitFlags::from_bits(access_point_data.wpa_flags().await?)
-        .unwrap_or(BitFlags::empty());
-    let rsn_flags: BitFlags<NM80211ApSecurityFlags> = BitFlags::from_bits(access_point_data.rsn_flags().await?)
-        .unwrap_or(BitFlags::empty());
+    let flags: BitFlags<NM80211ApFlags> =
+        BitFlags::from_bits(access_point_data.flags().await?).unwrap_or(BitFlags::empty());
+    let wpa_flags: BitFlags<NM80211ApSecurityFlags> =
+        BitFlags::from_bits(access_point_data.wpa_flags().await?).unwrap_or(BitFlags::empty());
+    let rsn_flags: BitFlags<NM80211ApSecurityFlags> =
+        BitFlags::from_bits(access_point_data.rsn_flags().await?).unwrap_or(BitFlags::empty());
 
     if wpa_flags.contains(NM80211ApSecurityFlags::AP_SEC_KEY_MGMT_802_1X)
-        || rsn_flags.contains(NM80211ApSecurityFlags::AP_SEC_KEY_MGMT_802_1X) {
+        || rsn_flags.contains(NM80211ApSecurityFlags::AP_SEC_KEY_MGMT_802_1X)
+    {
         return Ok(Security::ENTERPRISE);
     }
 
@@ -82,7 +83,10 @@ pub(crate) async fn get_access_point_security(
         return Ok(Security::WPA);
     }
 
-    if flags.contains(NM80211ApFlags::AP_FLAGS_PRIVACY) && wpa_flags.is_empty() && rsn_flags.is_empty() {
+    if flags.contains(NM80211ApFlags::AP_FLAGS_PRIVACY)
+        && wpa_flags.is_empty()
+        && rsn_flags.is_empty()
+    {
         return Ok(Security::WEP);
     }
 

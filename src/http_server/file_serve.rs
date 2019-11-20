@@ -7,26 +7,26 @@ use hyper::header::HeaderValue;
 use hyper::{Body, Request, Response, StatusCode};
 use std::path::{Path, PathBuf};
 
-#[cfg(feature = "includeui")]
+#[cfg(any(feature = "includeui", not(debug_assertions)))]
 /// A reference to all binary embedded ui files
 const PROJECT_DIR: include_dir::Dir = include_dir!("ui");
 
 /// The file wrapper struct deals with the fact that we either read a file from the filesystem
 /// or use a binary embedded variant. That means we either allocate a vector for the file content,
 /// or use a pointer to the data without any allocation.
-#[cfg(feature = "includeui")]
+#[cfg(any(feature = "includeui", not(debug_assertions)))]
 struct FileWrapper {
     path: PathBuf,
     embedded_file: include_dir::File<'static>,
 }
 
-#[cfg(not(feature = "includeui"))]
+#[cfg(all(not(feature = "includeui"), debug_assertions))]
 struct FileWrapper {
     path: PathBuf,
     contents: Vec<u8>,
 }
 
-#[cfg(feature = "includeui")]
+#[cfg(any(feature = "includeui", not(debug_assertions)))]
 impl<'a> FileWrapper {
     pub fn from_included(file: &include_dir::File) -> FileWrapper {
         Self {
@@ -46,7 +46,7 @@ impl<'a> FileWrapper {
     }
 }
 
-#[cfg(not(feature = "includeui"))]
+#[cfg(all(not(feature = "includeui"), debug_assertions))]
 impl<'a> FileWrapper {
     pub fn from_filesystem(root: &Path, path: &str) -> Option<FileWrapper> {
         use std::fs;
@@ -89,9 +89,9 @@ pub fn serve_file(
     let path = &req.uri().path()[1..];
 
     let file = match () {
-        #[cfg(not(feature = "includeui"))]
+        #[cfg(all(not(feature = "includeui"), debug_assertions))]
         () => FileWrapper::from_filesystem(root, path),
-        #[cfg(feature = "includeui")]
+        #[cfg(any(feature = "includeui", not(debug_assertions)))]
         () => PROJECT_DIR
             .get_file(path)
             .and_then(|f| Some(FileWrapper::from_included(&f))),

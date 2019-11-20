@@ -8,8 +8,8 @@ use crate::CaptivePortalError;
 use crate::ConnectionState;
 use crate::NetworkManagerState;
 use log::info;
-use std::time::Duration;
 use std::convert::TryInto;
+use std::time::Duration;
 
 /// The programs state machine. Each state carries its required data, no side-effects.
 /// The configuration and network manager connection are moved between states.
@@ -210,7 +210,11 @@ impl StateMachine {
                 let connection = nm
                     .connect_to(
                         network.ssid,
-                        credentials_from_data(network.passphrase, network.identity, network.mode.try_into()?)?,
+                        credentials_from_data(
+                            network.passphrase,
+                            network.identity,
+                            network.mode.try_into()?,
+                        )?,
                         network.hw,
                         true,
                     )

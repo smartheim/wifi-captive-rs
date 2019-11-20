@@ -1,21 +1,21 @@
 //! This module contains connectivity and state related types. This includes
 //! network manager state as well as connection and device state.
 
-use dbus::{nonblock, Path};
 use dbus::arg::RefArg;
 use dbus::message::SignalArgs;
+use dbus::{nonblock, Path};
 use futures_util::StreamExt;
-use hyper::client::connect::dns::{GaiResolver, Resolve, Name};
+use hyper::client::connect::dns::{GaiResolver, Name, Resolve};
 use std::net::{Shutdown, SocketAddr};
 use std::str::FromStr;
-use tokio::net::TcpStream;
 use tokio::future::FutureExt;
+use tokio::net::TcpStream;
 use tokio::stream::StreamExt as TokioStreamExt;
 
 use crate::network_backend::{NetworkBackend, NM_BUSNAME};
 use crate::network_interface::{Connectivity, NetworkManagerState};
-use crate::CaptivePortalError;
 use crate::utils::prop_stream;
+use crate::CaptivePortalError;
 
 impl From<&str> for NetworkManagerState {
     fn from(state: &str) -> Self {
@@ -28,7 +28,7 @@ impl From<&str> for NetworkManagerState {
             _ => {
                 warn!("Undefined Network Manager state: {}", state);
                 NetworkManagerState::Unknown
-            }
+            },
         }
     }
 }
@@ -88,7 +88,7 @@ impl NetworkBackend {
         loop {
             let v = match timeout {
                 Some(timeout) => stream.next().timeout(timeout).await,
-                None => Ok(stream.next().await)
+                None => Ok(stream.next().await),
             };
             match v {
                 Ok(Some((value, _path))) => {
@@ -100,7 +100,7 @@ impl NetworkBackend {
                             }
                         }
                     }
-                }
+                },
                 _ => break,
             }
         }
@@ -118,7 +118,9 @@ impl NetworkBackend {
         internet_connectivity: bool,
         timeout: std::time::Duration,
     ) -> Result<Connectivity, CaptivePortalError> {
-        let state = self.wait_until_state(NetworkManagerState::Connected, Some(timeout), false).await?;
+        let state = self
+            .wait_until_state(NetworkManagerState::Connected, Some(timeout), false)
+            .await?;
         if state != NetworkManagerState::Connected {
             return Ok(Connectivity::None);
         }
@@ -144,12 +146,14 @@ impl NetworkBackend {
             None => return Ok(Connectivity::Limited),
         };
         /// Try to establish a TCP connection
-        let r = TcpStream::connect(SocketAddr::new(r, 80)).timeout(timeout).await;
+        let r = TcpStream::connect(SocketAddr::new(r, 80))
+            .timeout(timeout)
+            .await;
         match r {
             Ok(Ok(v)) => {
                 let _ = v.shutdown(Shutdown::Both);
                 Ok(Connectivity::Full)
-            }
+            },
             _ => Ok(Connectivity::Limited),
         }
     }

@@ -27,7 +27,7 @@ impl From<u32> for NetworkManagerState {
             _ => {
                 warn!("Undefined Network Manager state: {}", state);
                 NetworkManagerState::Unknown
-            }
+            },
         }
     }
 }
@@ -43,7 +43,7 @@ impl From<u32> for Connectivity {
             _ => {
                 warn!("Undefined connectivity state: {}", state);
                 Connectivity::Unknown
-            }
+            },
         }
     }
 }
@@ -101,7 +101,7 @@ impl NetworkBackend {
                         }
                     }
                 }
-            }
+            },
             None => {
                 while let Some((value, _path)) = stream.next().await {
                     let state = NetworkManagerState::from(value.state);
@@ -109,7 +109,7 @@ impl NetworkBackend {
                         return Ok(state);
                     }
                 }
-            }
+            },
         }
 
         Ok(NetworkManagerState::Unknown)
@@ -166,7 +166,8 @@ impl NetworkBackend {
         use super::networkmanager::NetworkManager;
 
         let state = Connectivity::from(p.connectivity().await?);
-        if state == Connectivity::Full || (state == Connectivity::Limited && !internet_connectivity) {
+        if state == Connectivity::Full || (state == Connectivity::Limited && !internet_connectivity)
+        {
             return Ok(state);
         }
 
@@ -182,7 +183,9 @@ impl NetworkBackend {
             // Whenever network managers state change, request the current connectivity
             if let Some((_state, _path)) = state_change {
                 let state: Connectivity = p.connectivity().await?.into();
-                if state == Connectivity::Full || (state == Connectivity::Limited && !internet_connectivity) {
+                if state == Connectivity::Full
+                    || (state == Connectivity::Limited && !internet_connectivity)
+                {
                     return Ok(state);
                 }
             }

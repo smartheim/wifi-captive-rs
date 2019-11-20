@@ -47,16 +47,19 @@ where
     let _ = field.get_mut().take();
 }
 use crate::dbus_tokio::SignalStream;
+use dbus::message::SignalArgs;
 use dbus::nonblock::stdintf::org_freedesktop_dbus::PropertiesPropertiesChanged;
 use dbus::nonblock::SyncConnection;
-use dbus::message::SignalArgs;
-use std::sync::{Arc};
+use std::sync::Arc;
 
-pub async fn prop_stream(wifi_device_path:&dbus::Path<'_>,conn:Arc<SyncConnection>) ->
-    Result<SignalStream<PropertiesPropertiesChanged, PropertiesPropertiesChanged>,CaptivePortalError>{
-
-    let rule = PropertiesPropertiesChanged::match_rule(None, Some(wifi_device_path))
-        .static_clone();
+pub async fn prop_stream(
+    wifi_device_path: &dbus::Path<'_>,
+    conn: Arc<SyncConnection>,
+) -> Result<
+    SignalStream<PropertiesPropertiesChanged, PropertiesPropertiesChanged>,
+    CaptivePortalError,
+> {
+    let rule = PropertiesPropertiesChanged::match_rule(None, Some(wifi_device_path)).static_clone();
     let stream: SignalStream<PropertiesPropertiesChanged, PropertiesPropertiesChanged> =
         SignalStream::new(conn, rule, Box::new(|v| v)).await?;
     Ok(stream)

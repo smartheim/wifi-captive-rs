@@ -43,7 +43,7 @@ pub struct Portal<'a> {
     hotspot_stopped_fut: Option<BoxFuture<'a, Result<(), CaptivePortalError>>>,
     /// The http server future. Will be polled by this wrapping future.
     http_server: Pin<
-        Box<dyn Future<Output=Result<Option<WifiConnectionRequest>, CaptivePortalError>> + Send>,
+        Box<dyn Future<Output = Result<Option<WifiConnectionRequest>, CaptivePortalError>> + Send>,
     >,
 }
 
@@ -104,7 +104,7 @@ impl<'a> Portal<'a> {
                 Err(e) => {
                     error!("{}", e);
                     return;
-                }
+                },
                 Ok(stream) => stream,
             };
             for event in stream.next().await {
@@ -112,7 +112,7 @@ impl<'a> Portal<'a> {
                     Err(e) => {
                         error!("{}", e);
                         return;
-                    }
+                    },
                     Ok(event) => http_server::update_network(http_state.clone(), event).await,
                 }
             }

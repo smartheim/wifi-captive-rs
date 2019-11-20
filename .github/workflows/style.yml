@@ -1,13 +1,5 @@
 name: Code Style
 
-on:
-  pull_request:
-    paths:
-      - 'wifi-connect'
-  push:
-    paths:
-      - 'wifi-connect'
-      
 jobs:
   build:
 
@@ -15,6 +7,6 @@ jobs:
     steps:
       - uses: actions/checkout@master
       - name: Check for leftover println
-        run: cd wifi-connect && ./tests/left_over_println.sh
+        run: ./tests/left_over_println.sh
       - name: Check formatting
-        run: cd wifi-connect && cargo fmt --all -- --check
+        run: cargo fmt --all -- --check

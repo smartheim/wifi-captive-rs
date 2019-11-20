@@ -208,16 +208,4 @@ compile_crate "x86_64" "x86_64-unknown-linux-musl"
 compile_crate "aarch64" "aarch64-unknown-linux-musl"
 compile_crate "armv7l" "armv7-unknown-linux-musleabihf"
 
-docker="docker"
-if command -v "podman" > /dev/null 2>&1; then
-    docker="podman"
-fi
-
-if command -v $docker > /dev/null 2>&1; then
-    tag="docker.pkg.github.com/openhab-nodes/wifi-captive-rs/$CRATE_NAME:$CRATE_VERSION"
-    ensure $docker build -f $DEST/../Dockerfile_x86_64 -t $tag
-    source github_token.inc
-    ensure $docker push --creds=$GITHUB_USERNAME:$GITHUB_TOKEN $tag
-fi
-
 exit 0

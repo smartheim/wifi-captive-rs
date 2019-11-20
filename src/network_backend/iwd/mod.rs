@@ -17,17 +17,20 @@ mod connectivity;
 mod credentials_agent;
 mod find_wifi_device;
 
-use crate::{dbus_tokio, AccessPointCredentials, ActiveConnection, CaptivePortalError, Connectivity, NetworkManagerState, WifiConnection, SSID, prop_stream, ConnectionState};
+use crate::{
+    dbus_tokio, prop_stream, AccessPointCredentials, ActiveConnection, CaptivePortalError,
+    ConnectionState, Connectivity, NetworkManagerState, WifiConnection, SSID,
+};
 pub use access_points_changed::AccessPointsChangedStream;
 
+use dbus::arg::RefArg;
 use dbus::nonblock::SyncConnection;
 use dbus::{nonblock, Path};
+use futures_util::StreamExt;
 use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use futures_util::StreamExt;
 use tokio::stream::StreamExt as TokioStreamExt;
-use dbus::arg::RefArg;
 
 pub const NM_BUSNAME: &str = "net.connman.iwd";
 
@@ -228,8 +231,8 @@ impl NetworkBackend {
         password: Option<String>,
         address: Option<Ipv4Addr>,
     ) -> Result<ActiveConnection, CaptivePortalError> {
-        use generated::device::NetConnmanIwdDevice;
         use generated::device::NetConnmanIwdAccessPoint;
+        use generated::device::NetConnmanIwdDevice;
         let p = nonblock::Proxy::new(NM_BUSNAME, self.wifi_device_path.clone(), self.conn.clone());
         if p.mode().await? != "ap" {
             p.set_mode("ap".into()).await?;
@@ -251,7 +254,7 @@ impl NetworkBackend {
                             break;
                         }
                     }
-                }
+                },
                 _ => break,
             }
         }
@@ -261,7 +264,10 @@ impl NetworkBackend {
         Ok(ActiveConnection {
             connection_path: self.wifi_device_path.clone(),
             active_connection_path: self.wifi_device_path.clone(),
-            state: match state { true => ConnectionState::Activated, false => ConnectionState::Deactivated },
+            state: match state {
+                true => ConnectionState::Activated,
+                false => ConnectionState::Deactivated,
+            },
         })
     }
 
