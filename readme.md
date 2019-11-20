@@ -2,6 +2,10 @@
 
 > WiFi service for Linux devices that opens an access point with a captive portal for easy network configuration from your mobile phone or laptop
 
+[![Build Status](https://github.com/openhab-nodes/wifi-captive-rs/workflows/Build%20and%20Test/badge.svg)](https://github.com/openhab-nodes/wifi-captive-rs/actions)
+[![](https://meritbadge.herokuapp.com/ohx-addon-publish)](https://crates.io/crates/wifi-captive)
+[![](https://img.shields.io/badge/license-MIT-blue.svg)](http://opensource.org/licenses/MIT)
+
 **Release note: This crate contains a local copy of the dbus crate.
 It relies on a few [async/await modifications](doc/required_dbus_changes.md).
 As soon as those are upstream a new release is going out.**
