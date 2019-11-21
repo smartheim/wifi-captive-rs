@@ -87,14 +87,23 @@ impl DHCPServer {
     }
 
     pub async fn run(&mut self) -> Result<(), super::CaptivePortalError> {
-        let mut socket =
+        let socket = self.bind().await?;
+        Ok(self.receive_loop(socket).await?)
+    }
+
+    async fn bind(&mut self) -> Result<tokio::net::UdpSocket, super::CaptivePortalError> {
+        let socket =
             tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
         socket
             .set_broadcast(true)
             .expect("Broadcast flag on udpsocket for dhcp server");
+        self.server_addr.set_port(socket.local_addr().expect("Local addr").port());
 
         info!("Started dhcp server on {}", &self.server_addr);
+        Ok(socket)
+    }
 
+    async fn receive_loop(&mut self, mut socket: tokio::net::UdpSocket) -> Result<(), super::CaptivePortalError> {
         let mut sender = Sender {
             out_buf: Box::new([0; 1500]),
             server_ip: self.server_addr.ip().octets(),
@@ -114,27 +123,27 @@ impl DHCPServer {
                         match p.message_type() {
                             Ok(options::MessageType::Discover) => {
                                 self.handle_discover(p, &mut sender, &mut socket).await?;
-                            },
+                            }
                             Ok(options::MessageType::Request) => {
                                 self.handle_request(p, &mut sender, &mut socket).await?;
-                            },
+                            }
                             Ok(options::MessageType::Release)
                             | Ok(options::MessageType::Decline) => {
                                 self.handle_release(p);
-                            },
-                            _ => {},
+                            }
+                            _ => {}
                         };
                     }
-                },
+                }
                 // Exit signal received
                 None => break,
             };
             #[cfg(tests)]
-            {
-                if self.only_once {
-                    break;
+                {
+                    if self.only_once {
+                        break;
+                    }
                 }
-            }
         }
 
         info!("Stopped dhcp server on {}", &self.server_addr);
@@ -240,7 +249,7 @@ impl DHCPServer {
                 sender,
                 socket,
             )
-            .await;
+                .await;
         }
 
         Ok(0)
@@ -264,7 +273,7 @@ impl DHCPServer {
                 } else {
                     [x[0], x[1], x[2], x[3]]
                 }
-            },
+            }
         };
         if !self.available(&in_packet.chaddr, &req_ip) {
             return reply(
@@ -275,7 +284,7 @@ impl DHCPServer {
                 sender,
                 socket,
             )
-            .await;
+                .await;
         }
         {
             self.leases.insert(
@@ -294,7 +303,7 @@ impl DHCPServer {
             sender,
             socket,
         )
-        .await
+            .await
     }
 
     fn handle_release(&mut self, in_packet: packet::Packet<'_>) {
@@ -539,11 +548,17 @@ mod tests {
     }
 
     async fn test_domain_async() {
-        let socket_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 43210);
+        let socket_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0);
         let (mut dhcp_server, exit_handler) = DHCPServer::new(socket_addr);
         dhcp_server.only_once = true;
 
-        let server = dhcp_server.run();
+        let socket = dhcp_server.bind().await.expect("Socket bind");
+        let socket_addr = match socket.local_addr().expect("Local UPD Socket") {
+            SocketAddr::V4(v4) => v4,
+            _ => panic!("Must be a IPv4 Socket")
+        };
+
+        let server = dhcp_server.receive_loop(socket);
         let query = async move {
             let request_ip: [u8; 4] = [192, 168, 0, 10];
             let mut res_buffer: [u8; 300] = [0; 300];
@@ -572,7 +587,7 @@ mod tests {
         let r = rt.block_on(select(timeout, test));
         match r {
             Either::Left(_) => panic!("timeout"),
-            _ => {},
+            _ => {}
         };
     }
 }
