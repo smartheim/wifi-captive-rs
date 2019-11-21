@@ -52,7 +52,7 @@ dbus = { path = './dbus-rs-copy' }
 #dbus = { git = 'https://github.com/diwic/dbus-rs' }
 
 [features]
-default = ["networkmanager"]
+default = ["networkmanager","includeui"]
 includeui = ["include_dir"]
 networkmanager = []
 iwd = []

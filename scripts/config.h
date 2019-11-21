@@ -37,17 +37,17 @@
 */
 
 /* #undef DBUS_CONSOLE_AUTH_DIR */
-#define DBUS_DATADIR  "/usr/local/share"
-#define DBUS_BINDIR   "/usr/local/bin"
-#define DBUS_PREFIX "/usr/local"
+#define DBUS_DATADIR  "/usr/share"
+#define DBUS_BINDIR   "/usr/bin"
+#define DBUS_PREFIX "/usr"
 #define DBUS_SYSTEM_CONFIG_FILE  "/dbus-1/system.conf"
 #define DBUS_SESSION_CONFIG_FILE "/dbus-1/session.conf"
 #define DBUS_DAEMON_NAME "dbus-daemon"
-#define DBUS_SYSTEM_BUS_DEFAULT_ADDRESS  "unix:path=/usr/local/var/run/dbus/system_bus_socket"
+#define DBUS_SYSTEM_BUS_DEFAULT_ADDRESS  "unix:path=/usr/var/run/dbus/system_bus_socket"
 #define DBUS_SESSION_BUS_CONNECT_ADDRESS  "autolaunch:"
-#define DBUS_MACHINE_UUID_FILE "/usr/local/var/lib/dbus/machine-id"
-#define DBUS_DAEMONDIR "/usr/local/bin"
-#define DBUS_RUNSTATEDIR "/usr/local/var/run"
+#define DBUS_MACHINE_UUID_FILE "/usr/var/lib/dbus/machine-id"
+#define DBUS_DAEMONDIR "/usr/bin"
+#define DBUS_RUNSTATEDIR "/usr/var/run"
 
 /* #undef DBUS_ENABLE_STATS */
 /* #undef DBUS_ENABLE_CONTAINERS */

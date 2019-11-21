@@ -140,11 +140,11 @@ compile_crate() {
     export PKG_CONFIG_PATH="$DEST_ARCH"
     export PKG_CONFIG_LIBDIR="$DEST_ARCH/lib"
     say "Build crate for $ARCH"
-    local last_msg=$(cargo build --release --message-format=json --target $TARGET | tail -n1)
-    [ $? != 0 ] && err "Failed to build"
-    CRATE_NAME=$(echo $last_msg | jq -r -c '.package_id // empty' | cut -d' ' -f1)
-    CRATE_VERSION=$(echo $last_msg | jq -r -c '.package_id // empty' | cut -d' ' -f2)
-    local BINFILE=$(echo $last_msg | jq -r -c '.executable // empty')
+    ensure cargo build --release --features includeui --target $TARGET
+    local METADATA=$(cargo metadata --format-version 1 | jq -r '.workspace_members[0]')
+    CRATE_NAME=$(echo $METADATA | cut -d' ' -f1)
+    CRATE_VERSION=$(echo $METADATA | cut -d' ' -f2)
+    local BINFILE="target/$TARGET/release/$CRATE_NAME"
     say "Before stripping $CRATE_NAME ($CRATE_VERSION): $(wc -c $BINFILE | cut -d' ' -f1) Bytes"
     if [ "$ARCH" = "x86_64" ]; then
         $DEST_ARCH/bin/strip $BINFILE

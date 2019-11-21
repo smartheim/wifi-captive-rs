@@ -10,9 +10,7 @@ use futures_core::future::BoxFuture;
 use futures_util::{FutureExt, StreamExt};
 use std::future::Future;
 use std::net::SocketAddrV4;
-use std::path::PathBuf;
 use std::pin::Pin;
-use std::str::FromStr;
 use std::task;
 use std::task::Poll;
 use std::time::Duration;
@@ -57,15 +55,10 @@ impl<'a> Portal<'a> {
         wifi_access_points: Vec<WifiConnection>,
         timeout: Duration,
     ) -> Result<(Portal<'a>, tokio::sync::oneshot::Sender<()>), CaptivePortalError> {
-        let ui_directory = config
-            .ui_directory
-            .clone()
-            .unwrap_or(PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap_or("".into()));
-
         let (http_server, http_exit) = http_server::HttpServer::new(
             SocketAddrV4::new(config.gateway.clone(), config.listening_port),
             nm.clone(),
-            ui_directory,
+            config.get_ui_directory(),
         );
 
         let mut state = http_server

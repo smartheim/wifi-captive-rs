@@ -8,6 +8,9 @@ use hyper::{Body, Request, Response, StatusCode};
 use std::path::{Path, PathBuf};
 
 #[cfg(any(feature = "includeui", not(debug_assertions)))]
+use include_dir::{include_dir, include_dir_impl};
+
+#[cfg(any(feature = "includeui", not(debug_assertions)))]
 /// A reference to all binary embedded ui files
 const PROJECT_DIR: include_dir::Dir = include_dir!("ui");
 
@@ -17,7 +20,7 @@ const PROJECT_DIR: include_dir::Dir = include_dir!("ui");
 #[cfg(any(feature = "includeui", not(debug_assertions)))]
 struct FileWrapper {
     path: PathBuf,
-    embedded_file: include_dir::File<'static>,
+    contents: &'static [u8],
 }
 
 #[cfg(all(not(feature = "includeui"), debug_assertions))]
@@ -26,23 +29,30 @@ struct FileWrapper {
     contents: Vec<u8>,
 }
 
+struct R<'a>(&'a [u8]);
+unsafe fn extend_lifetime<'b>(r: R<'b>) -> R<'static> {
+    std::mem::transmute::<R<'b>, R<'static>>(r)
+}
+
 #[cfg(any(feature = "includeui", not(debug_assertions)))]
 impl<'a> FileWrapper {
-    pub fn from_included(file: &include_dir::File) -> FileWrapper {
+    pub fn from_included(file: &'a include_dir::File) -> FileWrapper {
         Self {
             path: PathBuf::from(file.path),
-            embedded_file: file.clone(),
+            // This is safe, because the author of the include_dir himself wrote in
+            // the documentation: "A file with its contents stored in a &'static [u8]"
+            contents: unsafe { extend_lifetime(R(file.contents())) }.0,
         }
     }
 
     pub fn path(&'a self) -> &'a Path {
-        self.embedded_file.path()
+        &self.path
     }
 
     /// The file's raw contents.
     /// This method consumes the file wrapper
     pub fn contents(self) -> Body {
-        Body::from(self.embedded_file.contents)
+        Body::from(self.contents)
     }
 }
 
@@ -92,9 +102,12 @@ pub fn serve_file(
         #[cfg(all(not(feature = "includeui"), debug_assertions))]
         () => FileWrapper::from_filesystem(root, path),
         #[cfg(any(feature = "includeui", not(debug_assertions)))]
-        () => PROJECT_DIR
-            .get_file(path)
-            .and_then(|f| Some(FileWrapper::from_included(&f))),
+        () => {
+            drop(root);
+            PROJECT_DIR
+                .get_file(path)
+                .and_then(|f| Some(FileWrapper::from_included(&f)))
+        },
     };
     // A captive portal catches all GET requests (that accept */* or text) and redirects to the main page.
     if file.is_none() {

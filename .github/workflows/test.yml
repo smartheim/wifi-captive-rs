@@ -12,4 +12,4 @@ jobs:
     - name: Install libusb dependency
       run: sudo apt-get install libdbus-1-dev
     - name: Build
-      run: apt-get install cargo test
+      run: cargo test

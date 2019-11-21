@@ -81,6 +81,18 @@ pub struct Config {
         long = "connection-store",
         env = "CONNECTION_STORE"
     )]
-    #[cfg(not(feature = "includeui"))]
+    #[cfg(all(not(feature = "includeui"), debug_assertions))]
     pub ui_directory: Option<PathBuf>,
+}
+
+impl Config {
+    #[cfg(all(not(feature = "includeui"), debug_assertions))]
+    pub fn get_ui_directory(&self) -> PathBuf {
+        self.ui_directory.clone().unwrap_or("ui".into())
+    }
+
+    #[cfg(any(feature = "includeui", not(debug_assertions)))]
+    pub fn get_ui_directory(&self) -> PathBuf {
+        PathBuf::new()
+    }
 }
