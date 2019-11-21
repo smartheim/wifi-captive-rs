@@ -24,10 +24,8 @@ struct AccessPointChanged {
     pub event: WifiConnectionEventType,
 }
 
-type APAddedType =
-    SignalStream<iwd::OrgFreedesktopDBusObjectManagerInterfacesAdded, AccessPointChanged>;
-type APRemovedType =
-    SignalStream<iwd::OrgFreedesktopDBusObjectManagerInterfacesRemoved, AccessPointChanged>;
+type APAddedType = SignalStream<iwd::OrgFreedesktopDBusObjectManagerInterfacesAdded, AccessPointChanged>;
+type APRemovedType = SignalStream<iwd::OrgFreedesktopDBusObjectManagerInterfacesRemoved, AccessPointChanged>;
 type InnerFutureType = Result<WifiConnection, CaptivePortalError>;
 
 pub struct AccessPointsChangedStream<'a> {
@@ -39,9 +37,7 @@ pub struct AccessPointsChangedStream<'a> {
 }
 
 impl<'a> AccessPointsChangedStream<'a> {
-    pub async fn new(
-        network_manager: &'a NetworkBackend,
-    ) -> Result<AccessPointsChangedStream<'a>, CaptivePortalError> {
+    pub async fn new(network_manager: &'a NetworkBackend) -> Result<AccessPointsChangedStream<'a>, CaptivePortalError> {
         // This is implemented via stream merging, because each subscription is encapsulated in its own stream.
 
         let rule_added = iwd::OrgFreedesktopDBusObjectManagerInterfacesAdded::match_rule(
@@ -63,11 +59,7 @@ impl<'a> AccessPointsChangedStream<'a> {
                 |v: iwd::OrgFreedesktopDBusObjectManagerInterfacesAdded| AccessPointChanged {
                     event: WifiConnectionEventType::Added,
                     path: v.object_path.to_string(),
-                    interfaces_and_properties: v
-                        .interfaces_and_properties
-                        .into_iter()
-                        .map(|f| f.0)
-                        .collect(),
+                    interfaces_and_properties: v.interfaces_and_properties.into_iter().map(|f| f.0).collect(),
                 },
             ),
         )
@@ -76,13 +68,13 @@ impl<'a> AccessPointsChangedStream<'a> {
         let inner_stream_removed: APRemovedType = SignalStream::new(
             network_manager.conn.clone(),
             rule_removed,
-            Box::new(|v: iwd::OrgFreedesktopDBusObjectManagerInterfacesRemoved| {
-                AccessPointChanged {
+            Box::new(
+                |v: iwd::OrgFreedesktopDBusObjectManagerInterfacesRemoved| AccessPointChanged {
                     event: WifiConnectionEventType::Removed,
                     path: v.object_path.to_string(),
                     interfaces_and_properties: v.interfaces.into_iter().collect(),
-                }
-            }),
+                },
+            ),
         )
         .await?;
 
@@ -99,10 +91,7 @@ impl<'a> AccessPointsChangedStream<'a> {
 impl<'a> Stream for AccessPointsChangedStream<'a> {
     type Item = Result<WifiConnectionEvent, CaptivePortalError>;
 
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        ctx: &mut task::Context,
-    ) -> task::Poll<Option<Self::Item>> {
+    fn poll_next(mut self: Pin<&mut Self>, ctx: &mut task::Context) -> task::Poll<Option<Self::Item>> {
         // This stream merges the Add/Remove streams of the dbus API. But we do not just want to return
         // the changed network manager dbus path, but an actual "WifiConnectionEvent". We need to call
         // a network_manager async method "access_point" for this.
@@ -123,10 +112,7 @@ impl<'a> Stream for AccessPointsChangedStream<'a> {
             }
         }
 
-        let inner_stream_added = unsafe {
-            self.as_mut()
-                .map_unchecked_mut(|me| &mut me.inner_stream_added)
-        };
+        let inner_stream_added = unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.inner_stream_added) };
         match inner_stream_added.poll_next(ctx) {
             Poll::Ready(Some((access_point_changed, _path))) => {
                 let access_point_changed: AccessPointChanged = access_point_changed;
@@ -135,21 +121,14 @@ impl<'a> Stream for AccessPointsChangedStream<'a> {
                     .contains("net.connman.iwd.Network")
                 {
                     self.inner_future_event_type = access_point_changed.event;
-                    self.inner_future = Some(
-                        self.network_manager
-                            .access_point(access_point_changed.path)
-                            .boxed(),
-                    );
+                    self.inner_future = Some(self.network_manager.access_point(access_point_changed.path).boxed());
                     return self.poll_next(ctx);
                 }
             },
             _ => {},
         }
 
-        let inner_stream_removed = unsafe {
-            self.as_mut()
-                .map_unchecked_mut(|me| &mut me.inner_stream_removed)
-        };
+        let inner_stream_removed = unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.inner_stream_removed) };
         match inner_stream_removed.poll_next(ctx) {
             Poll::Ready(Some((access_point_changed, _path))) => {
                 let access_point_changed: AccessPointChanged = access_point_changed;
@@ -158,11 +137,7 @@ impl<'a> Stream for AccessPointsChangedStream<'a> {
                     .contains("net.connman.iwd.Network")
                 {
                     self.inner_future_event_type = access_point_changed.event;
-                    self.inner_future = Some(
-                        self.network_manager
-                            .access_point(access_point_changed.path)
-                            .boxed(),
-                    );
+                    self.inner_future = Some(self.network_manager.access_point(access_point_changed.path).boxed());
                     return self.poll_next(ctx);
                 }
             },

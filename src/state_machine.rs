@@ -85,9 +85,7 @@ impl StateMachine {
                 let state = nm.state().await?;
                 info!("Starting up. Network manager reports state {:?}", state);
                 Ok(match state {
-                    NetworkManagerState::Unknown
-                    | NetworkManagerState::Asleep
-                    | NetworkManagerState::Disconnected => {
+                    NetworkManagerState::Unknown | NetworkManagerState::Asleep | NetworkManagerState::Disconnected => {
                         Some(StateMachine::ActivatePortal(config, nm))
                     },
                     NetworkManagerState::Disconnecting | NetworkManagerState::Connecting => {
@@ -101,10 +99,8 @@ impl StateMachine {
                 nm.enable_networking_and_wifi().await?;
 
                 // Try to connect to an existing connection
-                let r = ctrl_c_or_future(
-                    nm.try_auto_connect(Duration::from_secs(config.wait_before_reconfigure)),
-                )
-                .await?;
+                let r =
+                    ctrl_c_or_future(nm.try_auto_connect(Duration::from_secs(config.wait_before_reconfigure))).await?;
                 match r {
                     // Ctrl+C
                     None => return Ok(Some(StateMachine::Exit(nm))),
@@ -156,11 +152,7 @@ impl StateMachine {
                 use tokio::future::FutureExt;
 
                 let r = nm
-                    .hotspot_start(
-                        config.ssid.clone(),
-                        config.passphrase.clone(),
-                        Some(config.gateway),
-                    )
+                    .hotspot_start(config.ssid.clone(), config.passphrase.clone(), Some(config.gateway))
                     .timeout(Duration::from_secs(25))
                     .await;
 
@@ -171,7 +163,10 @@ impl StateMachine {
                         return Ok(Some(StateMachine::TryReconnect(config, nm)));
                     },
                     Ok(Err(e)) => {
-                        warn!("Failed to create hotspot: {}. Trying to establish a connection instead.", e);
+                        warn!(
+                            "Failed to create hotspot: {}. Trying to establish a connection instead.",
+                            e
+                        );
                         return Ok(Some(StateMachine::TryReconnect(config, nm)));
                     },
                 };
@@ -195,9 +190,7 @@ impl StateMachine {
                     Some(wifi_connection) => {
                         match wifi_connection? {
                             // The user has entered a wifi connection
-                            Some(wifi_connection) => {
-                                Ok(Some(StateMachine::Connect(config, nm, wifi_connection)))
-                            },
+                            Some(wifi_connection) => Ok(Some(StateMachine::Connect(config, nm, wifi_connection))),
                             // Timeout
                             None => Ok(Some(StateMachine::TryReconnect(config, nm))),
                         }
@@ -210,11 +203,7 @@ impl StateMachine {
                 let connection = nm
                     .connect_to(
                         network.ssid,
-                        credentials_from_data(
-                            network.passphrase,
-                            network.identity,
-                            network.mode.try_into()?,
-                        )?,
+                        credentials_from_data(network.passphrase, network.identity, network.mode.try_into()?)?,
                         network.hw,
                         true,
                     )

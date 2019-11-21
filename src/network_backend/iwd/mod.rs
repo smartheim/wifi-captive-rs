@@ -18,8 +18,8 @@ mod credentials_agent;
 mod find_wifi_device;
 
 use crate::{
-    dbus_tokio, prop_stream, AccessPointCredentials, ActiveConnection, CaptivePortalError,
-    ConnectionState, Connectivity, NetworkManagerState, WifiConnection, SSID,
+    dbus_tokio, prop_stream, AccessPointCredentials, ActiveConnection, CaptivePortalError, ConnectionState,
+    Connectivity, NetworkManagerState, WifiConnection, SSID,
 };
 pub use access_points_changed::AccessPointsChangedStream;
 
@@ -49,9 +49,7 @@ pub struct NetworkBackend {
 impl NetworkBackend {
     /// Create a new connection to the network manager. This will also try to enable networking
     /// and wifi. Returns a network manager instance or an error if no wifi device can be found.
-    pub async fn new(
-        interface_name: &Option<String>,
-    ) -> Result<NetworkBackend, CaptivePortalError> {
+    pub async fn new(interface_name: &Option<String>) -> Result<NetworkBackend, CaptivePortalError> {
         // Prepare an exit handler
         let (exit_handler, exit_receiver) = tokio::sync::oneshot::channel::<()>();
 
@@ -127,10 +125,7 @@ impl NetworkBackend {
     }
 
     /// Enables auto connect. This enumerates all known connections and sets auto connect to true.
-    pub async fn try_auto_connect(
-        &self,
-        timeout: std::time::Duration,
-    ) -> Result<bool, CaptivePortalError> {
+    pub async fn try_auto_connect(&self, timeout: std::time::Duration) -> Result<bool, CaptivePortalError> {
         let p = nonblock::Proxy::new(NM_BUSNAME, "/", self.conn.clone());
         use generated::iwd::OrgFreedesktopDBusObjectManager;
 
@@ -202,10 +197,7 @@ impl NetworkBackend {
     ///
     /// ## Arguments
     /// * find_all: Perform a full scan. This may take up to a minute.
-    pub async fn list_access_points(
-        &self,
-        find_all: bool,
-    ) -> Result<Vec<WifiConnection>, CaptivePortalError> {
+    pub async fn list_access_points(&self, find_all: bool) -> Result<Vec<WifiConnection>, CaptivePortalError> {
         if find_all {
             self.scan_networks().await?;
         }

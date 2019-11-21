@@ -21,8 +21,7 @@ use std::sync::{Arc, Mutex};
 // Re-export for easier use in sub-modules
 use crate::dbus_tokio;
 use crate::network_interface::{
-    AccessPointCredentials, ActiveConnection, ConnectionState, NetworkManagerState, WifiConnection,
-    SSID,
+    AccessPointCredentials, ActiveConnection, ConnectionState, NetworkManagerState, WifiConnection, SSID,
 };
 use crate::CaptivePortalError;
 use generated::*;
@@ -59,9 +58,7 @@ pub struct NetworkBackend {
 impl NetworkBackend {
     /// Create a new connection to the network manager. This will also try to enable networking
     /// and wifi. Returns a network manager instance or an error if no wifi device can be found.
-    pub async fn new(
-        interface_name: &Option<String>,
-    ) -> Result<NetworkBackend, CaptivePortalError> {
+    pub async fn new(interface_name: &Option<String>) -> Result<NetworkBackend, CaptivePortalError> {
         // Prepare an exit handler
         let (exit_handler, exit_receiver) = tokio::sync::oneshot::channel::<()>();
 
@@ -114,15 +111,12 @@ impl NetworkBackend {
         let p = nonblock::Proxy::new(NM_BUSNAME, self.wifi_device_path.clone(), self.conn.clone());
         use chrono::{DateTime, Duration, NaiveDateTime, Utc};
         use device::DeviceWireless;
-        let scan_time =
-            DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(p.last_scan().await?, 0), Utc);
+        let scan_time = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(p.last_scan().await?, 0), Utc);
         if (Utc::now() - scan_time) > Duration::seconds(10) {
             // request_scan requires a hashmap of dbus::arg::RefArg parameters as argument.
             // Those are not thread safe, eg implement Send, so cannot be wrapped as intermediate state in the
             // async state machine. A function scope helps out here.
-            fn scan_networks(
-                p: dbus::nonblock::Proxy<Arc<SyncConnection>>,
-            ) -> dbus::nonblock::MethodReply<()> {
+            fn scan_networks(p: dbus::nonblock::Proxy<Arc<SyncConnection>>) -> dbus::nonblock::MethodReply<()> {
                 p.request_scan(HashMap::new())
             }
             scan_networks(p).await?;
@@ -149,10 +143,7 @@ impl NetworkBackend {
     }
 
     /// Let network manager try to auto-connect.
-    pub async fn try_auto_connect(
-        &self,
-        timeout: std::time::Duration,
-    ) -> Result<bool, CaptivePortalError> {
+    pub async fn try_auto_connect(&self, timeout: std::time::Duration) -> Result<bool, CaptivePortalError> {
         self.enable_auto_connect().await;
 
         use connections::Settings;
@@ -195,33 +186,19 @@ impl NetworkBackend {
     ) -> Result<Option<ActiveConnection>, CaptivePortalError> {
         // try to find connection, update it, activate it and return the connection path
         let active_connection = if let Some(hw) = hw {
-            if let Some((connection_path, old_connection)) =
-                self.find_connection_by_mac(&hw).await?
-            {
+            if let Some((connection_path, old_connection)) = self.find_connection_by_mac(&hw).await? {
                 Some(
-                    self.update_connection(
-                        connection_path,
-                        &ssid,
-                        old_connection,
-                        credentials.clone(),
-                    )
-                    .await?,
+                    self.update_connection(connection_path, &ssid, old_connection, credentials.clone())
+                        .await?,
                 )
             } else {
                 None
             }
         } else if overwrite_same_ssid_connection {
-            if let Some((connection_path, old_connection)) =
-                self.find_connection_by_ssid(&ssid).await?
-            {
+            if let Some((connection_path, old_connection)) = self.find_connection_by_ssid(&ssid).await? {
                 Some(
-                    self.update_connection(
-                        connection_path,
-                        &ssid,
-                        old_connection,
-                        credentials.clone(),
-                    )
-                    .await?,
+                    self.update_connection(connection_path, &ssid, old_connection, credentials.clone())
+                        .await?,
                 )
             } else {
                 None
@@ -231,26 +208,20 @@ impl NetworkBackend {
         };
 
         // If not found: Create and activate a new connection
-        let (connection_path, active_connection) =
-            if let Some(active_connection) = active_connection {
-                active_connection
-            } else {
-                let settings = wifi_settings::make_arguments_for_ap(&ssid, credentials, None)?;
-                let options = wifi_settings::make_options_for_ap();
+        let (connection_path, active_connection) = if let Some(active_connection) = active_connection {
+            active_connection
+        } else {
+            let settings = wifi_settings::make_arguments_for_ap(&ssid, credentials, None)?;
+            let options = wifi_settings::make_options_for_ap();
 
-                // Create connection
-                use networkmanager::NetworkManager;
-                let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
-                let (conn_path, active_connection, _) = p
-                    .add_and_activate_connection2(
-                        settings,
-                        self.wifi_device_path.clone(),
-                        "/".into(),
-                        options,
-                    )
-                    .await?;
-                (conn_path, active_connection)
-            };
+            // Create connection
+            use networkmanager::NetworkManager;
+            let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
+            let (conn_path, active_connection, _) = p
+                .add_and_activate_connection2(settings, self.wifi_device_path.clone(), "/".into(), options)
+                .await?;
+            (conn_path, active_connection)
+        };
 
         // Wait up to 5 seconds while in Deactivated
         let state = self
@@ -265,8 +236,7 @@ impl NetworkBackend {
 
         {
             use device::Device;
-            let p =
-                nonblock::Proxy::new(NM_BUSNAME, self.wifi_device_path.clone(), self.conn.clone());
+            let p = nonblock::Proxy::new(NM_BUSNAME, self.wifi_device_path.clone(), self.conn.clone());
             dbg!(device_state_type::DeviceState::from(p.state().await?));
         }
 
@@ -287,12 +257,8 @@ impl NetworkBackend {
             let p = nonblock::Proxy::new(NM_BUSNAME, connection_path.clone(), self.conn.clone());
 
             // Settings: Provide an empty array, to use the current settings.
-            p.update2(
-                VariantMapNested::new(),
-                SAVE_TO_DISK_FLAG,
-                VariantMap::new(),
-            )
-            .await?;
+            p.update2(VariantMapNested::new(), SAVE_TO_DISK_FLAG, VariantMap::new())
+                .await?;
             return Ok(Some(ActiveConnection {
                 connection_path: connection_path.into_static(),
                 active_connection_path: active_connection.into_static(),
@@ -337,10 +303,7 @@ impl NetworkBackend {
     ///
     /// ## Arguments
     /// * find_all: Perform a full scan. This may take up to a minute.
-    pub async fn list_access_points(
-        &self,
-        find_all: bool,
-    ) -> Result<Vec<WifiConnection>, CaptivePortalError> {
+    pub async fn list_access_points(&self, find_all: bool) -> Result<Vec<WifiConnection>, CaptivePortalError> {
         let p = nonblock::Proxy::new(NM_BUSNAME, self.wifi_device_path.clone(), self.conn.clone());
 
         let access_point_paths = {

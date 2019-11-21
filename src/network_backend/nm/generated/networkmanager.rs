@@ -40,8 +40,7 @@ pub trait NetworkManager {
     fn deactivate_connection(&self, active_connection: dbus::Path) -> nonblock::MethodReply<()>;
     fn sleep(&self, sleep: bool) -> nonblock::MethodReply<()>;
     fn enable(&self, enable: bool) -> nonblock::MethodReply<()>;
-    fn get_permissions(&self)
-        -> nonblock::MethodReply<::std::collections::HashMap<String, String>>;
+    fn get_permissions(&self) -> nonblock::MethodReply<::std::collections::HashMap<String, String>>;
     fn set_logging(&self, level: &str, domains: &str) -> nonblock::MethodReply<()>;
     fn get_logging(&self) -> nonblock::MethodReply<(String, String)>;
     fn check_connectivity(&self) -> nonblock::MethodReply<u32>;
@@ -57,11 +56,8 @@ pub trait NetworkManager {
         &self,
         checkpoint: dbus::Path,
     ) -> nonblock::MethodReply<::std::collections::HashMap<String, u32>>;
-    fn checkpoint_adjust_rollback_timeout(
-        &self,
-        checkpoint: dbus::Path,
-        add_timeout: u32,
-    ) -> nonblock::MethodReply<()>;
+    fn checkpoint_adjust_rollback_timeout(&self, checkpoint: dbus::Path, add_timeout: u32)
+        -> nonblock::MethodReply<()>;
     fn devices(&self) -> nonblock::MethodReply<Vec<dbus::Path<'static>>>;
     fn all_devices(&self) -> nonblock::MethodReply<Vec<dbus::Path<'static>>>;
     fn checkpoints(&self) -> nonblock::MethodReply<Vec<dbus::Path<'static>>>;
@@ -90,18 +86,14 @@ pub trait NetworkManager {
     fn set_connectivity_check_enabled(&self, value: bool) -> nonblock::MethodReply<()>;
     fn global_dns_configuration(
         &self,
-    ) -> nonblock::MethodReply<
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
-    >;
+    ) -> nonblock::MethodReply<::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>>;
     fn set_global_dns_configuration(
         &self,
         value: ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
     ) -> nonblock::MethodReply<()>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetworkManager
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetworkManager for nonblock::Proxy<'a, C> {
     fn reload(&self, flags: u32) -> nonblock::MethodReply<()> {
         self.method_call("org.freedesktop.NetworkManager", "Reload", (flags,))
     }
@@ -117,12 +109,8 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetworkMa
     }
 
     fn get_device_by_ip_iface(&self, iface: &str) -> nonblock::MethodReply<dbus::Path<'static>> {
-        self.method_call(
-            "org.freedesktop.NetworkManager",
-            "GetDeviceByIpIface",
-            (iface,),
-        )
-        .and_then(|r: (dbus::Path<'static>,)| Ok(r.0))
+        self.method_call("org.freedesktop.NetworkManager", "GetDeviceByIpIface", (iface,))
+            .and_then(|r: (dbus::Path<'static>,)| Ok(r.0))
     }
 
     fn activate_connection(
@@ -192,19 +180,13 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetworkMa
         self.method_call("org.freedesktop.NetworkManager", "Enable", (enable,))
     }
 
-    fn get_permissions(
-        &self,
-    ) -> nonblock::MethodReply<::std::collections::HashMap<String, String>> {
+    fn get_permissions(&self) -> nonblock::MethodReply<::std::collections::HashMap<String, String>> {
         self.method_call("org.freedesktop.NetworkManager", "GetPermissions", ())
             .and_then(|r: (::std::collections::HashMap<String, String>,)| Ok(r.0))
     }
 
     fn set_logging(&self, level: &str, domains: &str) -> nonblock::MethodReply<()> {
-        self.method_call(
-            "org.freedesktop.NetworkManager",
-            "SetLogging",
-            (level, domains),
-        )
+        self.method_call("org.freedesktop.NetworkManager", "SetLogging", (level, domains))
     }
 
     fn get_logging(&self) -> nonblock::MethodReply<(String, String)> {
@@ -236,23 +218,15 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetworkMa
     }
 
     fn checkpoint_destroy(&self, checkpoint: dbus::Path) -> nonblock::MethodReply<()> {
-        self.method_call(
-            "org.freedesktop.NetworkManager",
-            "CheckpointDestroy",
-            (checkpoint,),
-        )
+        self.method_call("org.freedesktop.NetworkManager", "CheckpointDestroy", (checkpoint,))
     }
 
     fn checkpoint_rollback(
         &self,
         checkpoint: dbus::Path,
     ) -> nonblock::MethodReply<::std::collections::HashMap<String, u32>> {
-        self.method_call(
-            "org.freedesktop.NetworkManager",
-            "CheckpointRollback",
-            (checkpoint,),
-        )
-        .and_then(|r: (::std::collections::HashMap<String, u32>,)| Ok(r.0))
+        self.method_call("org.freedesktop.NetworkManager", "CheckpointRollback", (checkpoint,))
+            .and_then(|r: (::std::collections::HashMap<String, u32>,)| Ok(r.0))
     }
 
     fn checkpoint_adjust_rollback_timeout(
@@ -445,9 +419,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetworkMa
 
     fn global_dns_configuration(
         &self,
-    ) -> nonblock::MethodReply<
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
-    > {
+    ) -> nonblock::MethodReply<::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>> {
         <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
             &self,
             "org.freedesktop.NetworkManager",
@@ -506,8 +478,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetworkMa
 
 #[derive(Debug)]
 pub struct NetworkManagerPropertiesChanged {
-    pub properties:
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+    pub properties: ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
 }
 
 impl arg::AppendAll for NetworkManagerPropertiesChanged {
@@ -518,9 +489,7 @@ impl arg::AppendAll for NetworkManagerPropertiesChanged {
 
 impl arg::ReadAll for NetworkManagerPropertiesChanged {
     fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-        Ok(NetworkManagerPropertiesChanged {
-            properties: i.read()?,
-        })
+        Ok(NetworkManagerPropertiesChanged { properties: i.read()? })
     }
 }
 
@@ -582,9 +551,7 @@ impl arg::AppendAll for NetworkManagerDeviceAdded {
 
 impl arg::ReadAll for NetworkManagerDeviceAdded {
     fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-        Ok(NetworkManagerDeviceAdded {
-            device_path: i.read()?,
-        })
+        Ok(NetworkManagerDeviceAdded { device_path: i.read()? })
     }
 }
 
@@ -606,9 +573,7 @@ impl arg::AppendAll for NetworkManagerDeviceRemoved {
 
 impl arg::ReadAll for NetworkManagerDeviceRemoved {
     fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-        Ok(NetworkManagerDeviceRemoved {
-            device_path: i.read()?,
-        })
+        Ok(NetworkManagerDeviceRemoved { device_path: i.read()? })
     }
 }
 

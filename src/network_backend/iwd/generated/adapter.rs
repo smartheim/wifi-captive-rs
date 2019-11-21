@@ -12,39 +12,21 @@ pub trait NetConnmanIwdAdapter {
     fn supported_modes(&self) -> nonblock::MethodReply<Vec<String>>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnmanIwdAdapter
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnmanIwdAdapter for nonblock::Proxy<'a, C> {
     fn powered(&self) -> nonblock::MethodReply<bool> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Adapter",
-            "Powered",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Adapter", "Powered")
     }
 
     fn model(&self) -> nonblock::MethodReply<String> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Adapter",
-            "Model",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Adapter", "Model")
     }
 
     fn vendor(&self) -> nonblock::MethodReply<String> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Adapter",
-            "Vendor",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Adapter", "Vendor")
     }
 
     fn name(&self) -> nonblock::MethodReply<String> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Adapter",
-            "Name",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Adapter", "Name")
     }
 
     fn supported_modes(&self) -> nonblock::MethodReply<Vec<String>> {

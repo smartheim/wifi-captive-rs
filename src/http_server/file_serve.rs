@@ -124,8 +124,7 @@ pub fn serve_file(
                 *response.status_mut() = StatusCode::FOUND;
                 response.headers_mut().append(
                     "Location",
-                    HeaderValue::from_str(&redirect_loc)
-                        .expect("Headervalue from generated string"),
+                    HeaderValue::from_str(&redirect_loc).expect("Headervalue from generated string"),
                 );
                 return Ok(response);
             }

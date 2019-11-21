@@ -166,8 +166,7 @@ impl NetworkBackend {
         use super::networkmanager::NetworkManager;
 
         let state = Connectivity::from(p.connectivity().await?);
-        if state == Connectivity::Full || (state == Connectivity::Limited && !internet_connectivity)
-        {
+        if state == Connectivity::Full || (state == Connectivity::Limited && !internet_connectivity) {
             return Ok(state);
         }
 
@@ -183,9 +182,7 @@ impl NetworkBackend {
             // Whenever network managers state change, request the current connectivity
             if let Some((_state, _path)) = state_change {
                 let state: Connectivity = p.connectivity().await?.into();
-                if state == Connectivity::Full
-                    || (state == Connectivity::Limited && !internet_connectivity)
-                {
+                if state == Connectivity::Full || (state == Connectivity::Limited && !internet_connectivity) {
                     return Ok(state);
                 }
             }
@@ -199,10 +196,7 @@ impl NetworkBackend {
         use super::device::Device;
         let p = nonblock::Proxy::new(NM_BUSNAME, &self.wifi_device_path, self.conn.clone());
         if let Err(e) = p.set_autoconnect(true).await {
-            warn!(
-                "Failed to enable autoconnect for {}: {}",
-                self.interface_name, e
-            );
+            warn!("Failed to enable autoconnect for {}: {}", self.interface_name, e);
         }
     }
 }

@@ -46,17 +46,13 @@ pub trait Connection {
         >,
         flags: u32,
         args: ::std::collections::HashMap<&str, arg::Variant<Box<dyn arg::RefArg>>>,
-    ) -> nonblock::MethodReply<
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
-    >;
+    ) -> nonblock::MethodReply<::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>>;
     fn unsaved(&self) -> nonblock::MethodReply<bool>;
     fn flags(&self) -> nonblock::MethodReply<u32>;
     fn filename(&self) -> nonblock::MethodReply<String>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Connection
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Connection for nonblock::Proxy<'a, C> {
     fn update(
         &self,
         properties: ::std::collections::HashMap<
@@ -86,11 +82,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Connectio
     }
 
     fn delete(&self) -> nonblock::MethodReply<()> {
-        self.method_call(
-            "org.freedesktop.NetworkManager.Settings.Connection",
-            "Delete",
-            (),
-        )
+        self.method_call("org.freedesktop.NetworkManager.Settings.Connection", "Delete", ())
     }
 
     fn get_settings(
@@ -101,22 +93,15 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Connectio
             ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
         >,
     > {
-        self.method_call(
-            "org.freedesktop.NetworkManager.Settings.Connection",
-            "GetSettings",
-            (),
-        )
-        .and_then(
-            |r: (
-                ::std::collections::HashMap<
-                    String,
+        self.method_call("org.freedesktop.NetworkManager.Settings.Connection", "GetSettings", ())
+            .and_then(
+                |r: (
                     ::std::collections::HashMap<
                         String,
-                        arg::Variant<Box<dyn arg::RefArg + 'static>>,
+                        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
                     >,
-                >,
-            )| Ok(r.0),
-        )
+                )| Ok(r.0),
+            )
     }
 
     fn get_secrets(
@@ -137,29 +122,18 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Connectio
             |r: (
                 ::std::collections::HashMap<
                     String,
-                    ::std::collections::HashMap<
-                        String,
-                        arg::Variant<Box<dyn arg::RefArg + 'static>>,
-                    >,
+                    ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
                 >,
             )| Ok(r.0),
         )
     }
 
     fn clear_secrets(&self) -> nonblock::MethodReply<()> {
-        self.method_call(
-            "org.freedesktop.NetworkManager.Settings.Connection",
-            "ClearSecrets",
-            (),
-        )
+        self.method_call("org.freedesktop.NetworkManager.Settings.Connection", "ClearSecrets", ())
     }
 
     fn save(&self) -> nonblock::MethodReply<()> {
-        self.method_call(
-            "org.freedesktop.NetworkManager.Settings.Connection",
-            "Save",
-            (),
-        )
+        self.method_call("org.freedesktop.NetworkManager.Settings.Connection", "Save", ())
     }
 
     fn update2(
@@ -170,19 +144,13 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Connectio
         >,
         flags: u32,
         args: ::std::collections::HashMap<&str, arg::Variant<Box<dyn arg::RefArg>>>,
-    ) -> nonblock::MethodReply<
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
-    > {
+    ) -> nonblock::MethodReply<::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>> {
         self.method_call(
             "org.freedesktop.NetworkManager.Settings.Connection",
             "Update2",
             (settings, flags, args),
         )
-        .and_then(
-            |r: (
-                ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
-            )| Ok(r.0),
-        )
+        .and_then(|r: (::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,)| Ok(r.0))
     }
 
     fn unsaved(&self) -> nonblock::MethodReply<bool> {
@@ -212,8 +180,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Connectio
 
 #[derive(Debug)]
 pub struct ConnectionPropertiesChanged {
-    pub properties:
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+    pub properties: ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
 }
 
 impl arg::AppendAll for ConnectionPropertiesChanged {
@@ -224,9 +191,7 @@ impl arg::AppendAll for ConnectionPropertiesChanged {
 
 impl arg::ReadAll for ConnectionPropertiesChanged {
     fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-        Ok(ConnectionPropertiesChanged {
-            properties: i.read()?,
-        })
+        Ok(ConnectionPropertiesChanged { properties: i.read()? })
     }
 }
 

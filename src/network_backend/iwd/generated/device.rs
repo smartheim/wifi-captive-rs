@@ -15,55 +15,29 @@ pub trait NetConnmanIwdDevice {
     fn set_mode(&self, value: String) -> nonblock::MethodReply<()>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnmanIwdDevice
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnmanIwdDevice for nonblock::Proxy<'a, C> {
     fn name(&self) -> nonblock::MethodReply<String> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Device",
-            "Name",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Device", "Name")
     }
 
     fn address(&self) -> nonblock::MethodReply<String> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Device",
-            "Address",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Device", "Address")
     }
 
     fn wds(&self) -> nonblock::MethodReply<bool> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Device",
-            "WDS",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Device", "WDS")
     }
 
     fn powered(&self) -> nonblock::MethodReply<bool> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Device",
-            "Powered",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Device", "Powered")
     }
 
     fn adapter(&self) -> nonblock::MethodReply<dbus::Path<'static>> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Device",
-            "Adapter",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Device", "Adapter")
     }
 
     fn mode(&self) -> nonblock::MethodReply<String> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Device",
-            "Mode",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Device", "Mode")
     }
 
     fn set_wds(&self, value: bool) -> nonblock::MethodReply<()> {
@@ -100,20 +74,14 @@ pub trait NetConnmanIwdStation {
     fn get_ordered_networks(&self) -> nonblock::MethodReply<Vec<(dbus::Path<'static>, i16)>>;
     fn get_hidden_access_points(&self) -> nonblock::MethodReply<Vec<(String, i16, String)>>;
     fn scan(&self) -> nonblock::MethodReply<()>;
-    fn register_signal_level_agent(
-        &self,
-        path: dbus::Path,
-        levels: Vec<i16>,
-    ) -> nonblock::MethodReply<()>;
+    fn register_signal_level_agent(&self, path: dbus::Path, levels: Vec<i16>) -> nonblock::MethodReply<()>;
     fn unregister_signal_level_agent(&self, path: dbus::Path) -> nonblock::MethodReply<()>;
     fn connected_network(&self) -> nonblock::MethodReply<dbus::Path<'static>>;
     fn scanning(&self) -> nonblock::MethodReply<bool>;
     fn state(&self) -> nonblock::MethodReply<String>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnmanIwdStation
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnmanIwdStation for nonblock::Proxy<'a, C> {
     fn connect_hidden_network(&self, name: &str) -> nonblock::MethodReply<()> {
         self.method_call("net.connman.iwd.Station", "ConnectHiddenNetwork", (name,))
     }
@@ -136,24 +104,12 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnma
         self.method_call("net.connman.iwd.Station", "Scan", ())
     }
 
-    fn register_signal_level_agent(
-        &self,
-        path: dbus::Path,
-        levels: Vec<i16>,
-    ) -> nonblock::MethodReply<()> {
-        self.method_call(
-            "net.connman.iwd.Station",
-            "RegisterSignalLevelAgent",
-            (path, levels),
-        )
+    fn register_signal_level_agent(&self, path: dbus::Path, levels: Vec<i16>) -> nonblock::MethodReply<()> {
+        self.method_call("net.connman.iwd.Station", "RegisterSignalLevelAgent", (path, levels))
     }
 
     fn unregister_signal_level_agent(&self, path: dbus::Path) -> nonblock::MethodReply<()> {
-        self.method_call(
-            "net.connman.iwd.Station",
-            "UnregisterSignalLevelAgent",
-            (path,),
-        )
+        self.method_call("net.connman.iwd.Station", "UnregisterSignalLevelAgent", (path,))
     }
 
     fn connected_network(&self) -> nonblock::MethodReply<dbus::Path<'static>> {
@@ -165,19 +121,11 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnma
     }
 
     fn scanning(&self) -> nonblock::MethodReply<bool> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Station",
-            "Scanning",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Station", "Scanning")
     }
 
     fn state(&self) -> nonblock::MethodReply<String> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Station",
-            "State",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Station", "State")
     }
 }
 
@@ -188,8 +136,8 @@ pub trait NetConnmanIwdWiFiSimpleConfiguration {
     fn cancel(&self) -> nonblock::MethodReply<()>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
-    NetConnmanIwdWiFiSimpleConfiguration for nonblock::Proxy<'a, C>
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnmanIwdWiFiSimpleConfiguration
+    for nonblock::Proxy<'a, C>
 {
     fn push_button(&self) -> nonblock::MethodReply<()> {
         self.method_call("net.connman.iwd.WiFiSimpleConfiguration", "PushButton", ())
@@ -201,11 +149,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
     }
 
     fn start_pin(&self, pin: &str) -> nonblock::MethodReply<()> {
-        self.method_call(
-            "net.connman.iwd.WiFiSimpleConfiguration",
-            "StartPin",
-            (pin,),
-        )
+        self.method_call("net.connman.iwd.WiFiSimpleConfiguration", "StartPin", (pin,))
     }
 
     fn cancel(&self) -> nonblock::MethodReply<()> {

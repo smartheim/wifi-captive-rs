@@ -76,10 +76,7 @@ pub fn create_stream(clients: &mut Clients, src: IpAddr) -> Response<Body> {
     for client in drained {
         client.tx.abort();
     }
-    clients.push_back(Client {
-        tx: sender,
-        dest: src,
-    });
+    clients.push_back(Client { tx: sender, dest: src });
 
     info!("SSE Client added: {:?}. Clients: {}", src, clients.len());
 

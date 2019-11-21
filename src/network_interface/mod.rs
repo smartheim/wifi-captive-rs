@@ -49,16 +49,9 @@ pub struct WifiConnections(pub Vec<WifiConnection>);
 #[derive(Debug, Clone)]
 pub enum AccessPointCredentials {
     None,
-    Wep {
-        passphrase: String,
-    },
-    Wpa {
-        passphrase: String,
-    },
-    Enterprise {
-        identity: String,
-        passphrase: String,
-    },
+    Wep { passphrase: String },
+    Wpa { passphrase: String },
+    Enterprise { identity: String, passphrase: String },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

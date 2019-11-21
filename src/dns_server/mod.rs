@@ -44,22 +44,15 @@ impl CaptiveDnsServer {
     }
 
     pub async fn run(&mut self) -> Result<(), CaptivePortalError> {
-        let mut socket =
-            tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
-        socket
-            .set_broadcast(true)
-            .expect("Set broadcast flag on udp socket");
+        let mut socket = tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
+        socket.set_broadcast(true).expect("Set broadcast flag on udp socket");
 
         info!("Started dns server on {}", &self.server_addr);
 
         let mut req_buffer = BytePacketBuffer::new();
         loop {
-            let future = super::utils::receive_or_exit(
-                &mut socket,
-                &mut self.exit_receiver,
-                &mut req_buffer.buf,
-            )
-            .await?;
+            let future =
+                super::utils::receive_or_exit(&mut socket, &mut self.exit_receiver, &mut req_buffer.buf).await?;
             match future {
                 // Wait for either a received packet or the exit signal
                 Some((size, socket_addr)) => {
@@ -137,11 +130,7 @@ mod tests {
     use std::time::Duration;
     use tokio::runtime::Runtime;
 
-    async fn lookup(
-        qname: &str,
-        qtype: QueryType,
-        server: SocketAddr,
-    ) -> Result<DnsPacket, super::CaptivePortalError> {
+    async fn lookup(qname: &str, qtype: QueryType, server: SocketAddr) -> Result<DnsPacket, super::CaptivePortalError> {
         let mut socket = UdpSocket::bind(("0.0.0.0", 0)).await?;
 
         let mut packet = DnsPacket::new();
@@ -149,16 +138,12 @@ mod tests {
         packet.header.id = 6666;
         packet.header.questions = 1;
         packet.header.recursion_desired = true;
-        packet
-            .questions
-            .push(DnsQuery::new(qname.to_string(), qtype));
+        packet.questions.push(DnsQuery::new(qname.to_string(), qtype));
 
         let mut req_buffer = BytePacketBuffer::new();
         req_buffer.reset_for_write();
         packet.write(&mut req_buffer)?;
-        socket
-            .send_to(&req_buffer.buf[0..req_buffer.pos], server)
-            .await?;
+        socket.send_to(&req_buffer.buf[0..req_buffer.pos], server).await?;
 
         let mut res_buffer = BytePacketBuffer::new();
         let (size, _) = socket.recv_from(&mut res_buffer.buf).await?;

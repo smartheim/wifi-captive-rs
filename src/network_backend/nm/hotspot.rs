@@ -3,10 +3,7 @@ use dbus::nonblock;
 use std::net::Ipv4Addr;
 
 use super::wifi_settings::{self, VariantMap, VariantMapNested, WifiConnectionMode};
-use super::{
-    NetworkBackend, HOTSPOT_UUID, IN_MEMORY_ONLY, NM_BUSNAME, NM_PATH, NM_SETTINGS_PATH,
-    VOLATILE_FLAG,
-};
+use super::{NetworkBackend, HOTSPOT_UUID, IN_MEMORY_ONLY, NM_BUSNAME, NM_PATH, NM_SETTINGS_PATH, VOLATILE_FLAG};
 use crate::dbus_tokio::SignalStream;
 use crate::network_interface::{ActiveConnection, ConnectionState, SSID};
 use crate::CaptivePortalError;
@@ -42,22 +39,14 @@ impl NetworkBackend {
         let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
 
         let connections = p.active_connections().await?;
-        info!(
-            "Scan {} connections for hotspot connections ...",
-            connections.len()
-        );
+        info!("Scan {} connections for hotspot connections ...", connections.len());
 
         for connection_path in connections {
-            let settings =
-                wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone())
-                    .await;
+            let settings = wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone()).await;
             match settings {
                 Ok(Some(settings)) => {
                     if settings.mode == WifiConnectionMode::AP {
-                        info!(
-                            "disable hotspot connection {} {}",
-                            settings.uuid, settings.ssid
-                        );
+                        info!("disable hotspot connection {} {}", settings.uuid, settings.ssid);
                         p.deactivate_connection(connection_path).await?;
                     }
                 },
@@ -83,13 +72,8 @@ impl NetworkBackend {
         info!("Configuring hotspot ...");
         let connection_path = {
             // add connection
-            let settings = wifi_settings::make_arguments_for_sta(
-                ssid,
-                password,
-                address,
-                &self.interface_name,
-                HOTSPOT_UUID,
-            )?;
+            let settings =
+                wifi_settings::make_arguments_for_sta(ssid, password, address, &self.interface_name, HOTSPOT_UUID)?;
             let p = nonblock::Proxy::new(NM_BUSNAME, NM_SETTINGS_PATH, self.conn.clone());
             use super::generated::connections::Settings;
             // We want the dbus nm api AddConnection2 here, but that's not yet available everywhere as of Oct 2019.

@@ -146,9 +146,7 @@ impl NetworkBackend {
             None => return Ok(Connectivity::Limited),
         };
         /// Try to establish a TCP connection
-        let r = TcpStream::connect(SocketAddr::new(r, 80))
-            .timeout(timeout)
-            .await;
+        let r = TcpStream::connect(SocketAddr::new(r, 80)).timeout(timeout).await;
         match r {
             Ok(Ok(v)) => {
                 let _ = v.shutdown(Shutdown::Both);

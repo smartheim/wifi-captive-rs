@@ -34,8 +34,8 @@ pub trait OrgFreedesktopDBusObjectManager {
     >;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
-    OrgFreedesktopDBusObjectManager for nonblock::Proxy<'a, C>
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> OrgFreedesktopDBusObjectManager
+    for nonblock::Proxy<'a, C>
 {
     fn get_managed_objects(
         &self,
@@ -48,25 +48,18 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>>
             >,
         >,
     > {
-        self.method_call(
-            "org.freedesktop.DBus.ObjectManager",
-            "GetManagedObjects",
-            (),
-        )
-        .and_then(
-            |r: (
-                ::std::collections::HashMap<
-                    dbus::Path<'static>,
+        self.method_call("org.freedesktop.DBus.ObjectManager", "GetManagedObjects", ())
+            .and_then(
+                |r: (
                     ::std::collections::HashMap<
-                        String,
+                        dbus::Path<'static>,
                         ::std::collections::HashMap<
                             String,
-                            arg::Variant<Box<dyn arg::RefArg + 'static>>,
+                            ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
                         >,
                     >,
-                >,
-            )| Ok(r.0),
-        )
+                )| Ok(r.0),
+            )
     }
 }
 

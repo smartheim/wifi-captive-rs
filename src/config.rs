@@ -11,12 +11,7 @@ pub struct Config {
     pub interface: Option<String>,
 
     /// ssid of the captive portal WiFi network
-    #[structopt(
-        short,
-        long = "portal-ssid",
-        default_value = "OHX WiFi Connect",
-        env = "PORTAL_SSID"
-    )]
+    #[structopt(short, long = "portal-ssid", default_value = "OHX WiFi Connect", env = "PORTAL_SSID")]
     pub ssid: String,
 
     /// WPA2 Passphrase of the captive portal WiFi network
@@ -75,12 +70,7 @@ pub struct Config {
     pub internet_connectivity: bool,
 
     /// The directory where the html files reside.
-    #[structopt(
-        parse(from_os_str),
-        short,
-        long = "connection-store",
-        env = "CONNECTION_STORE"
-    )]
+    #[structopt(parse(from_os_str), short, long = "connection-store", env = "CONNECTION_STORE")]
     #[cfg(all(not(feature = "includeui"), debug_assertions))]
     pub ui_directory: Option<PathBuf>,
 }

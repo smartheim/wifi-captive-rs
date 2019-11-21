@@ -12,19 +12,13 @@ pub trait NetConnmanIwdNetwork {
     fn known_network(&self) -> nonblock::MethodReply<dbus::Path<'static>>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnmanIwdNetwork
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnmanIwdNetwork for nonblock::Proxy<'a, C> {
     fn connect(&self) -> nonblock::MethodReply<()> {
         self.method_call("net.connman.iwd.Network", "Connect", ())
     }
 
     fn name(&self) -> nonblock::MethodReply<String> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Network",
-            "Name",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Network", "Name")
     }
 
     fn connected(&self) -> nonblock::MethodReply<bool> {
@@ -36,19 +30,11 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> NetConnma
     }
 
     fn device(&self) -> nonblock::MethodReply<dbus::Path<'static>> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Network",
-            "Device",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Network", "Device")
     }
 
     fn type_(&self) -> nonblock::MethodReply<String> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "net.connman.iwd.Network",
-            "Type",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "net.connman.iwd.Network", "Type")
     }
 
     fn known_network(&self) -> nonblock::MethodReply<dbus::Path<'static>> {

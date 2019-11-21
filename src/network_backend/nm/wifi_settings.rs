@@ -118,10 +118,7 @@ pub(crate) fn make_arguments_for_sta(
         add_str(&mut ipv4, "method", "manual");
 
         let mut addr_map: HashMap<String, Variant<Box<dyn RefArg>>> = HashMap::new();
-        addr_map.insert(
-            "address".to_owned(),
-            Variant(Box::new(format!("{}", address))),
-        );
+        addr_map.insert("address".to_owned(), Variant(Box::new(format!("{}", address))));
         addr_map.insert("prefix".to_owned(), Variant(Box::new(24_u32)));
         add_val(&mut ipv4, "address-data", vec![addr_map]);
     } else {
@@ -169,9 +166,7 @@ pub(crate) fn make_arguments_for_ap<T: Eq + std::hash::Hash + std::convert::From
 
 /// Adds necessary entries to the given settings map.
 /// To be used by wifi device connect and [`add_wifi_connection`].
-pub(crate) fn prepare_wifi_security_settings<
-    T: Eq + std::hash::Hash + std::convert::From<&'static str>,
->(
+pub(crate) fn prepare_wifi_security_settings<T: Eq + std::hash::Hash + std::convert::From<&'static str>>(
     credentials: &AccessPointCredentials,
     settings: &mut HashMap<T, VariantMap>,
 ) -> Result<(), CaptivePortalError> {
@@ -179,16 +174,8 @@ pub(crate) fn prepare_wifi_security_settings<
         AccessPointCredentials::Wep { ref passphrase } => {
             let mut security_settings: VariantMap = HashMap::new();
 
-            add_val(
-                &mut security_settings,
-                "wep-key-type",
-                NM_WEP_KEY_TYPE_PASSPHRASE,
-            );
-            add_val(
-                &mut security_settings,
-                "wep-key0",
-                verify_password(passphrase.clone())?,
-            );
+            add_val(&mut security_settings, "wep-key-type", NM_WEP_KEY_TYPE_PASSPHRASE);
+            add_val(&mut security_settings, "wep-key0", verify_password(passphrase.clone())?);
 
             settings.insert("802-11-wireless-security".into(), security_settings);
         },
@@ -196,11 +183,7 @@ pub(crate) fn prepare_wifi_security_settings<
             let mut security_settings: VariantMap = HashMap::new();
 
             add_str(&mut security_settings, "key-mgmt", "wpa-psk");
-            add_val(
-                &mut security_settings,
-                "psk",
-                verify_password(passphrase.clone())?,
-            );
+            add_val(&mut security_settings, "psk", verify_password(passphrase.clone())?);
 
             settings.insert("802-11-wireless-security".into(), security_settings);
         },
@@ -247,10 +230,7 @@ pub(crate) fn extract_bytes(key: &str, map: &HashMap<String, Variant<Box<dyn Ref
         .unwrap_or_default()
 }
 
-pub(crate) fn extract_vector(
-    key: &str,
-    map: &HashMap<String, Variant<Box<dyn RefArg>>>,
-) -> Vec<String> {
+pub(crate) fn extract_vector(key: &str, map: &HashMap<String, Variant<Box<dyn RefArg>>>) -> Vec<String> {
     map.get(key)
         .and_then(|v| v.0.as_iter())
         .and_then(|v| {
@@ -273,11 +253,7 @@ pub(crate) async fn get_connection_settings(
     // The api consumer might hand us an active connection instead of a regular one. If so, determine the connection path
     // and overwrite the proxy.
     let mut p = nonblock::Proxy::new(NM_BUSNAME, connection_path.clone(), conn.clone());
-    if connection_path
-        .clone()
-        .to_string()
-        .contains("ActiveConnection")
-    {
+    if connection_path.clone().to_string().contains("ActiveConnection") {
         use super::generated::connection_active::ConnectionActive;
         let path = p.connection().await?;
         p = nonblock::Proxy::new(NM_BUSNAME, path, conn.clone());
@@ -324,8 +300,7 @@ pub(crate) async fn get_connection_settings(
 
 /// Dbus library helper type
 pub(crate) type VariantMap = HashMap<&'static str, Variant<Box<dyn RefArg>>>;
-pub(crate) type VariantMapNested =
-    HashMap<&'static str, HashMap<&'static str, Variant<Box<dyn RefArg>>>>;
+pub(crate) type VariantMapNested = HashMap<&'static str, HashMap<&'static str, Variant<Box<dyn RefArg>>>>;
 
 pub(crate) fn add_val<V>(map: &mut VariantMap, key: &'static str, value: V)
 where

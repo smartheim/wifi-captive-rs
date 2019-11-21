@@ -12,11 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let manager = NetworkBackend::new(&config.interface).await?;
     manager
-        .hotspot_start(
-            config.ssid,
-            config.passphrase,
-            Some(Ipv4Addr::new(10, 0, 0, 1)),
-        )
+        .hotspot_start(config.ssid, config.passphrase, Some(Ipv4Addr::new(10, 0, 0, 1)))
         .await?;
 
     Ok(())

@@ -34,10 +34,7 @@ pub struct IOResource<C> {
 }
 
 impl<C: AsRef<Channel> + Process> IOResource<C> {
-    fn poll_internal(
-        &self,
-        ctx: &mut task::Context<'_>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    fn poll_internal(&self, ctx: &mut task::Context<'_>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Waker for writes
         self.connection.set_waker(ctx.waker().clone());
 
@@ -137,10 +134,7 @@ where
             let v = (state.mapper)(v);
             return task::Poll::Ready(Some((
                 v,
-                message
-                    .path()
-                    .and_then(|f| Some(f.to_string()))
-                    .unwrap_or_default(),
+                message.path().and_then(|f| Some(f.to_string())).unwrap_or_default(),
             )));
         }
         state.waker = Some(ctx.waker().clone());

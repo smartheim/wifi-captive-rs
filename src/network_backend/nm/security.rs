@@ -83,10 +83,7 @@ pub(crate) async fn get_access_point_security(
         return Ok(Security::WPA);
     }
 
-    if flags.contains(NM80211ApFlags::AP_FLAGS_PRIVACY)
-        && wpa_flags.is_empty()
-        && rsn_flags.is_empty()
-    {
+    if flags.contains(NM80211ApFlags::AP_FLAGS_PRIVACY) && wpa_flags.is_empty() && rsn_flags.is_empty() {
         return Ok(Security::WEP);
     }
 

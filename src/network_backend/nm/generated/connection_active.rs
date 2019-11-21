@@ -22,9 +22,7 @@ pub trait ConnectionActive {
     fn master(&self) -> nonblock::MethodReply<dbus::Path<'static>>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> ConnectionActive
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> ConnectionActive for nonblock::Proxy<'a, C> {
     fn connection(&self) -> nonblock::MethodReply<dbus::Path<'static>> {
         <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
             &self,
@@ -156,8 +154,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Connectio
 
 #[derive(Debug)]
 pub struct ConnectionActivePropertiesChanged {
-    pub properties:
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+    pub properties: ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
 }
 
 impl arg::AppendAll for ConnectionActivePropertiesChanged {
@@ -168,9 +165,7 @@ impl arg::AppendAll for ConnectionActivePropertiesChanged {
 
 impl arg::ReadAll for ConnectionActivePropertiesChanged {
     fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-        Ok(ConnectionActivePropertiesChanged {
-            properties: i.read()?,
-        })
+        Ok(ConnectionActivePropertiesChanged { properties: i.read()? })
     }
 }
 

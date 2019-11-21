@@ -9,9 +9,7 @@ pub trait Peer {
     fn get_machine_id(&self) -> nonblock::MethodReply<String>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Peer
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Peer for nonblock::Proxy<'a, C> {
     fn ping(&self) -> nonblock::MethodReply<()> {
         self.method_call("org.freedesktop.DBus.Peer", "Ping", ())
     }
@@ -26,9 +24,7 @@ pub trait Introspectable {
     fn introspect(&self) -> nonblock::MethodReply<String>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Introspectable
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Introspectable for nonblock::Proxy<'a, C> {
     fn introspect(&self) -> nonblock::MethodReply<String> {
         self.method_call("org.freedesktop.DBus.Introspectable", "Introspect", ())
             .and_then(|r: (String,)| Ok(r.0))
@@ -44,9 +40,7 @@ pub trait Properties {
     fn get_all(
         &self,
         interface: &str,
-    ) -> nonblock::MethodReply<
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
-    >;
+    ) -> nonblock::MethodReply<::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>>;
     fn set(
         &self,
         interface: &str,
@@ -55,37 +49,22 @@ pub trait Properties {
     ) -> nonblock::MethodReply<()>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Properties
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Properties for nonblock::Proxy<'a, C> {
     fn get(
         &self,
         interface: &str,
         property: &str,
     ) -> nonblock::MethodReply<arg::Variant<Box<dyn arg::RefArg + 'static>>> {
-        self.method_call(
-            "org.freedesktop.DBus.Properties",
-            "Get",
-            (interface, property),
-        )
-        .and_then(|r: (arg::Variant<Box<dyn arg::RefArg + 'static>>,)| Ok(r.0))
+        self.method_call("org.freedesktop.DBus.Properties", "Get", (interface, property))
+            .and_then(|r: (arg::Variant<Box<dyn arg::RefArg + 'static>>,)| Ok(r.0))
     }
 
     fn get_all(
         &self,
         interface: &str,
-    ) -> nonblock::MethodReply<
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
-    > {
+    ) -> nonblock::MethodReply<::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>> {
         self.method_call("org.freedesktop.DBus.Properties", "GetAll", (interface,))
-            .and_then(
-                |r: (
-                    ::std::collections::HashMap<
-                        String,
-                        arg::Variant<Box<dyn arg::RefArg + 'static>>,
-                    >,
-                )| Ok(r.0),
-            )
+            .and_then(|r: (::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,)| Ok(r.0))
     }
 
     fn set(
@@ -94,19 +73,14 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Propertie
         property: &str,
         value: arg::Variant<Box<dyn arg::RefArg>>,
     ) -> nonblock::MethodReply<()> {
-        self.method_call(
-            "org.freedesktop.DBus.Properties",
-            "Set",
-            (interface, property, value),
-        )
+        self.method_call("org.freedesktop.DBus.Properties", "Set", (interface, property, value))
     }
 }
 
 #[derive(Debug)]
 pub struct PropertiesPropertiesChanged {
     pub interface: String,
-    pub changed_properties:
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+    pub changed_properties: ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
     pub invalidated_properties: Vec<String>,
 }
 
@@ -185,12 +159,8 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> OrgFreede
     }
 
     fn reload_or_try_restart(&self, arg0: &str) -> nonblock::MethodReply<dbus::Path<'static>> {
-        self.method_call(
-            "org.freedesktop.systemd1.Unit",
-            "ReloadOrTryRestart",
-            (arg0,),
-        )
-        .and_then(|r: (dbus::Path<'static>,)| Ok(r.0))
+        self.method_call("org.freedesktop.systemd1.Unit", "ReloadOrTryRestart", (arg0,))
+            .and_then(|r: (dbus::Path<'static>,)| Ok(r.0))
     }
 
     fn kill(&self, arg0: &str, arg1: i32) -> nonblock::MethodReply<()> {
@@ -198,11 +168,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> OrgFreede
     }
 
     fn id(&self) -> nonblock::MethodReply<String> {
-        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "org.freedesktop.systemd1.Unit",
-            "Id",
-        )
+        <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(&self, "org.freedesktop.systemd1.Unit", "Id")
     }
 
     fn names(&self) -> nonblock::MethodReply<Vec<String>> {

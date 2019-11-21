@@ -175,9 +175,7 @@ pub fn title(code: u8) -> Option<&'static str> {
         NETWORK_TIME_PROTOCOL_SERVERS => "Network Time Protocol Servers",
         VENDOR_SPECIFIC_INFORMATION => "Vendor Specific Information",
         NETBIOS_OVER_TCPIP_NAME_SERVER => "NetBIOS over TCP/IP Name Server",
-        NETBIOS_OVER_TCPIP_DATAGRAM_DISTRIBUTION_SERVER => {
-            "NetBIOS over TCP/IP Datagram Distribution Server"
-        },
+        NETBIOS_OVER_TCPIP_DATAGRAM_DISTRIBUTION_SERVER => "NetBIOS over TCP/IP Datagram Distribution Server",
         NETBIOS_OVER_TCPIP_NODE_TYPE => "NetBIOS over TCP/IP Node Type",
         NETBIOS_OVER_TCPIP_SCOPE => "NetBIOS over TCP/IP Scope",
         XWINDOW_SYSTEM_FONT_SERVER => "X Window System Font Server",

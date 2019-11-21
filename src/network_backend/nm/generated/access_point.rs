@@ -16,9 +16,7 @@ pub trait AccessPoint {
     fn last_seen(&self) -> nonblock::MethodReply<i32>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> AccessPoint
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> AccessPoint for nonblock::Proxy<'a, C> {
     fn flags(&self) -> nonblock::MethodReply<u32> {
         <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
             &self,
@@ -102,8 +100,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> AccessPoi
 
 #[derive(Debug)]
 pub struct AccessPointPropertiesChanged {
-    pub properties:
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+    pub properties: ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
 }
 
 impl arg::AppendAll for AccessPointPropertiesChanged {
@@ -114,9 +111,7 @@ impl arg::AppendAll for AccessPointPropertiesChanged {
 
 impl arg::ReadAll for AccessPointPropertiesChanged {
     fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-        Ok(AccessPointPropertiesChanged {
-            properties: i.read()?,
-        })
+        Ok(AccessPointPropertiesChanged { properties: i.read()? })
     }
 }
 

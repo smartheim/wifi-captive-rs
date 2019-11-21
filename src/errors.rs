@@ -102,14 +102,10 @@ impl fmt::Display for CaptivePortalError {
             CaptivePortalError::IO(ref e) => e.fmt(f),
             CaptivePortalError::Hyper(ref e) => e.fmt(f),
             CaptivePortalError::Utf8(ref e) => e.fmt(f),
-            CaptivePortalError::DBus(ref name, ref msg) => {
-                write!(f, "Dbus Error: {} - {}", name, msg)
-            },
+            CaptivePortalError::DBus(ref name, ref msg) => write!(f, "Dbus Error: {} - {}", name, msg),
             CaptivePortalError::Ser(ref e) => e.fmt(f),
             CaptivePortalError::RecvError(ref e) => e.fmt(f),
-            CaptivePortalError::NotInStationMode => {
-                write!(f, "Scanning not possible: Not in station mode!")
-            },
+            CaptivePortalError::NotInStationMode => write!(f, "Scanning not possible: Not in station mode!"),
         }
     }
 }

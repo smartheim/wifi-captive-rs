@@ -28,17 +28,11 @@ pub trait Settings {
     fn can_modify(&self) -> nonblock::MethodReply<bool>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Settings
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Settings for nonblock::Proxy<'a, C> {
     fn list_connections(&self) -> nonblock::MethodReply<Vec<dbus::Path<'static>>> {
         info!("list_connections start");
-        self.method_call(
-            "org.freedesktop.NetworkManager.Settings",
-            "ListConnections",
-            (),
-        )
-        .and_then(|r: (Vec<dbus::Path<'static>>,)| Ok(r.0))
+        self.method_call("org.freedesktop.NetworkManager.Settings", "ListConnections", ())
+            .and_then(|r: (Vec<dbus::Path<'static>>,)| Ok(r.0))
     }
 
     fn get_connection_by_uuid(&self, uuid: &str) -> nonblock::MethodReply<dbus::Path<'static>> {
@@ -89,20 +83,12 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Settings
     }
 
     fn reload_connections(&self) -> nonblock::MethodReply<bool> {
-        self.method_call(
-            "org.freedesktop.NetworkManager.Settings",
-            "ReloadConnections",
-            (),
-        )
-        .and_then(|r: (bool,)| Ok(r.0))
+        self.method_call("org.freedesktop.NetworkManager.Settings", "ReloadConnections", ())
+            .and_then(|r: (bool,)| Ok(r.0))
     }
 
     fn save_hostname(&self, hostname: &str) -> nonblock::MethodReply<()> {
-        self.method_call(
-            "org.freedesktop.NetworkManager.Settings",
-            "SaveHostname",
-            (hostname,),
-        )
+        self.method_call("org.freedesktop.NetworkManager.Settings", "SaveHostname", (hostname,))
     }
 
     fn connections(&self) -> nonblock::MethodReply<Vec<dbus::Path<'static>>> {
@@ -132,8 +118,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Settings
 
 #[derive(Debug)]
 pub struct SettingsPropertiesChanged {
-    pub properties:
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+    pub properties: ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
 }
 
 impl arg::AppendAll for SettingsPropertiesChanged {
@@ -144,9 +129,7 @@ impl arg::AppendAll for SettingsPropertiesChanged {
 
 impl arg::ReadAll for SettingsPropertiesChanged {
     fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-        Ok(SettingsPropertiesChanged {
-            properties: i.read()?,
-        })
+        Ok(SettingsPropertiesChanged { properties: i.read()? })
     }
 }
 
@@ -168,9 +151,7 @@ impl arg::AppendAll for SettingsNewConnection {
 
 impl arg::ReadAll for SettingsNewConnection {
     fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-        Ok(SettingsNewConnection {
-            connection: i.read()?,
-        })
+        Ok(SettingsNewConnection { connection: i.read()? })
     }
 }
 
@@ -192,9 +173,7 @@ impl arg::AppendAll for SettingsConnectionRemoved {
 
 impl arg::ReadAll for SettingsConnectionRemoved {
     fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-        Ok(SettingsConnectionRemoved {
-            connection: i.read()?,
-        })
+        Ok(SettingsConnectionRemoved { connection: i.read()? })
     }
 }
 

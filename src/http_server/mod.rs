@@ -122,10 +122,7 @@ async fn http_router(
         info!("connect2");
         let parsed: WifiConnectionRequest = serde_json::from_slice(&output[..])?;
         let mut state = state.lock().expect("http state mutex lock");
-        let sender = state
-            .connection_sender
-            .take()
-            .expect("http state mutex lock");
+        let sender = state.connection_sender.take().expect("http state mutex lock");
         // release mutex as soon as possible
         drop(state);
         info!("connect3");
@@ -170,8 +167,7 @@ impl HttpServer {
         ui_path: PathBuf,
     ) -> (HttpServer, tokio::sync::oneshot::Sender<()>) {
         let (tx, exit_handler) = tokio::sync::oneshot::channel::<()>();
-        let (connection_sender, connection_receiver) =
-            tokio::sync::oneshot::channel::<Option<WifiConnectionRequest>>();
+        let (connection_sender, connection_receiver) = tokio::sync::oneshot::channel::<Option<WifiConnectionRequest>>();
 
         (
             HttpServer {
@@ -194,9 +190,7 @@ impl HttpServer {
     /// Consumes the server object and runs it until it receives an exit signal via
     /// the [`tokio::sync::oneshot::Sender`] returned by [`new`]. Also quits the server
     /// when
-    pub async fn run(
-        self: HttpServer,
-    ) -> Result<Option<WifiConnectionRequest>, super::CaptivePortalError> {
+    pub async fn run(self: HttpServer) -> Result<Option<WifiConnectionRequest>, super::CaptivePortalError> {
         // Consume the HttpServer by destructuring into its parts
         let (exit_handler, connection_receiver, state, server_addr, ui_path) = self.into();
 
@@ -209,9 +203,7 @@ impl HttpServer {
             let state = state.clone();
             let ui_path = ui_path.clone();
             async move {
-                let fun = service_fn(move |req| {
-                    http_router(state.clone(), ui_path.clone(), req, remote_addr)
-                });
+                let fun = service_fn(move |req| http_router(state.clone(), ui_path.clone(), req, remote_addr));
                 Ok::<_, hyper::Error>(fun)
             }
         });
@@ -300,15 +292,10 @@ impl HttpServer {
 
 /// Call this method to update, add, remove a network
 pub async fn update_network(http_state: HttpServerStateSync, event: WifiConnectionEvent) {
-    let mut state = http_state
-        .lock()
-        .expect("Mutex lock for http state on update_network");
+    let mut state = http_state.lock().expect("Mutex lock for http state on update_network");
     info!("Add network {}", &event.connection.ssid);
     let ref mut connections = state.connections.0;
-    match connections
-        .iter()
-        .position(|n| n.ssid == event.connection.ssid)
-    {
+    match connections.iter().position(|n| n.ssid == event.connection.ssid) {
         Some(pos) => {
             match event.event {
                 WifiConnectionEventType::Added => {

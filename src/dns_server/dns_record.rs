@@ -99,11 +99,7 @@ impl DnsRecord {
                 let mut ns = String::new();
                 buffer.read_qname(&mut ns)?;
 
-                Ok(DnsRecord::NS {
-                    domain,
-                    host: ns,
-                    ttl,
-                })
+                Ok(DnsRecord::NS { domain, host: ns, ttl })
             },
             QueryType::CNAME => {
                 let mut cname = String::new();

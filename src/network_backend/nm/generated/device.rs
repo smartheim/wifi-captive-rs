@@ -20,16 +20,10 @@ pub trait DeviceWireless {
     fn last_scan(&self) -> nonblock::MethodReply<i64>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> DeviceWireless
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> DeviceWireless for nonblock::Proxy<'a, C> {
     fn get_access_points(&self) -> nonblock::MethodReply<Vec<dbus::Path<'static>>> {
-        self.method_call(
-            "org.freedesktop.NetworkManager.Device.Wireless",
-            "GetAccessPoints",
-            (),
-        )
-        .and_then(|r: (Vec<dbus::Path<'static>>,)| Ok(r.0))
+        self.method_call("org.freedesktop.NetworkManager.Device.Wireless", "GetAccessPoints", ())
+            .and_then(|r: (Vec<dbus::Path<'static>>,)| Ok(r.0))
     }
 
     fn get_all_access_points(&self) -> nonblock::MethodReply<Vec<dbus::Path<'static>>> {
@@ -119,8 +113,7 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> DeviceWir
 
 #[derive(Debug)]
 pub struct DeviceWirelessPropertiesChanged {
-    pub properties:
-        ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
+    pub properties: ::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>,
 }
 
 impl arg::AppendAll for DeviceWirelessPropertiesChanged {
@@ -131,9 +124,7 @@ impl arg::AppendAll for DeviceWirelessPropertiesChanged {
 
 impl arg::ReadAll for DeviceWirelessPropertiesChanged {
     fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
-        Ok(DeviceWirelessPropertiesChanged {
-            properties: i.read()?,
-        })
+        Ok(DeviceWirelessPropertiesChanged { properties: i.read()? })
     }
 }
 
@@ -240,17 +231,13 @@ pub trait Device {
     fn metered(&self) -> nonblock::MethodReply<u32>;
     fn lldp_neighbors(
         &self,
-    ) -> nonblock::MethodReply<
-        Vec<::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>>,
-    >;
+    ) -> nonblock::MethodReply<Vec<::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>>>;
     fn real(&self) -> nonblock::MethodReply<bool>;
     fn ip4_connectivity(&self) -> nonblock::MethodReply<u32>;
     fn ip6_connectivity(&self) -> nonblock::MethodReply<u32>;
 }
 
-impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Device
-    for nonblock::Proxy<'a, C>
-{
+impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Device for nonblock::Proxy<'a, C> {
     fn reapply(
         &self,
         connection: ::std::collections::HashMap<
@@ -486,9 +473,8 @@ impl<'a, T: nonblock::NonblockReply, C: ::std::ops::Deref<Target = T>> Device
 
     fn lldp_neighbors(
         &self,
-    ) -> nonblock::MethodReply<
-        Vec<::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>>,
-    > {
+    ) -> nonblock::MethodReply<Vec<::std::collections::HashMap<String, arg::Variant<Box<dyn arg::RefArg + 'static>>>>>
+    {
         <Self as nonblock::stdintf::org_freedesktop_dbus::Properties>::get(
             &self,
             "org.freedesktop.NetworkManager.Device",

@@ -40,9 +40,7 @@ pub struct Portal<'a> {
     /// The connection changed future. Will be polled by this wrapping future.
     hotspot_stopped_fut: Option<BoxFuture<'a, Result<(), CaptivePortalError>>>,
     /// The http server future. Will be polled by this wrapping future.
-    http_server: Pin<
-        Box<dyn Future<Output = Result<Option<WifiConnectionRequest>, CaptivePortalError>> + Send>,
-    >,
+    http_server: Pin<Box<dyn Future<Output = Result<Option<WifiConnectionRequest>, CaptivePortalError>> + Send>>,
 }
 
 impl<'a> Portal<'a> {
@@ -61,23 +59,16 @@ impl<'a> Portal<'a> {
             config.get_ui_directory(),
         );
 
-        let mut state = http_server
-            .state
-            .lock()
-            .expect("Lock http_state mutex for portal");
+        let mut state = http_server.state.lock().expect("Lock http_state mutex for portal");
         state.connections.0.extend(wifi_access_points);
         drop(state);
 
         let http_state = http_server.state.clone();
 
-        let (mut dns_server, dns_exit) = dns_server::CaptiveDnsServer::new(SocketAddrV4::new(
-            config.gateway.clone(),
-            config.dns_port,
-        ));
-        let (mut dhcp_server, dhcp_exit) = dhcp_server::DHCPServer::new(SocketAddrV4::new(
-            config.gateway.clone(),
-            config.dhcp_port,
-        ));
+        let (mut dns_server, dns_exit) =
+            dns_server::CaptiveDnsServer::new(SocketAddrV4::new(config.gateway.clone(), config.dns_port));
+        let (mut dhcp_server, dhcp_exit) =
+            dhcp_server::DHCPServer::new(SocketAddrV4::new(config.gateway.clone(), config.dhcp_port));
 
         tokio::spawn(async move {
             if let Err(e) = dns_server.run().await {

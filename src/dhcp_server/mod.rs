@@ -16,12 +16,7 @@ use std::time::{Duration, Instant};
 #[macro_export]
 macro_rules! u32_bytes {
     ( $x:expr ) => {
-        [
-            ($x >> 24) as u8,
-            ($x >> 16) as u8,
-            ($x >> 8) as u8,
-            $x as u8,
-        ]
+        [($x >> 24) as u8, ($x >> 16) as u8, ($x >> 8) as u8, $x as u8]
     };
 }
 
@@ -29,10 +24,7 @@ macro_rules! u32_bytes {
 #[macro_export]
 macro_rules! bytes_u32 {
     ( $x:expr ) => {
-        ($x[0] as u32) * (1 << 24)
-            + ($x[1] as u32) * (1 << 16)
-            + ($x[2] as u32) * (1 << 8)
-            + ($x[3] as u32)
+        ($x[0] as u32) * (1 << 24) + ($x[1] as u32) * (1 << 16) + ($x[2] as u32) * (1 << 8) + ($x[3] as u32)
     };
 }
 
@@ -92,12 +84,12 @@ impl DHCPServer {
     }
 
     async fn bind(&mut self) -> Result<tokio::net::UdpSocket, super::CaptivePortalError> {
-        let socket =
-            tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
+        let socket = tokio::net::UdpSocket::bind(SocketAddr::V4(self.server_addr.clone())).await?;
         socket
             .set_broadcast(true)
             .expect("Broadcast flag on udpsocket for dhcp server");
-        self.server_addr.set_port(socket.local_addr().expect("Local addr").port());
+        self.server_addr
+            .set_port(socket.local_addr().expect("Local addr").port());
 
         info!("Started dhcp server on {}", &self.server_addr);
         Ok(socket)
@@ -112,9 +104,7 @@ impl DHCPServer {
 
         let mut in_buf: [u8; 1500] = [0; 1500];
         loop {
-            let future =
-                super::utils::receive_or_exit(&mut socket, &mut self.exit_receiver, &mut in_buf)
-                    .await?;
+            let future = super::utils::receive_or_exit(&mut socket, &mut self.exit_receiver, &mut in_buf).await?;
             match future {
                 // Wait for either a received packet or the exit signal
                 Some((size, socket_addr)) => {
@@ -123,27 +113,26 @@ impl DHCPServer {
                         match p.message_type() {
                             Ok(options::MessageType::Discover) => {
                                 self.handle_discover(p, &mut sender, &mut socket).await?;
-                            }
+                            },
                             Ok(options::MessageType::Request) => {
                                 self.handle_request(p, &mut sender, &mut socket).await?;
-                            }
-                            Ok(options::MessageType::Release)
-                            | Ok(options::MessageType::Decline) => {
+                            },
+                            Ok(options::MessageType::Release) | Ok(options::MessageType::Decline) => {
                                 self.handle_release(p);
-                            }
-                            _ => {}
+                            },
+                            _ => {},
                         };
                     }
-                }
+                },
                 // Exit signal received
                 None => break,
             };
             #[cfg(tests)]
-                {
-                    if self.only_once {
-                        break;
-                    }
+            {
+                if self.only_once {
+                    break;
                 }
+            }
         }
 
         info!("Stopped dhcp server on {}", &self.server_addr);
@@ -196,22 +185,20 @@ impl DHCPServer {
         socket: &mut tokio::net::UdpSocket,
     ) -> Result<usize, std::io::Error> {
         // Prefer client's choice if available
-        let ip = in_packet
-            .option(options::REQUESTED_IP_ADDRESS)
-            .and_then(|r| {
-                if r.len() == 4 {
-                    let mut client_preferred_ip: [u8; 4] = Default::default();
-                    client_preferred_ip.copy_from_slice(&r[0..4]);
+        let ip = in_packet.option(options::REQUESTED_IP_ADDRESS).and_then(|r| {
+            if r.len() == 4 {
+                let mut client_preferred_ip: [u8; 4] = Default::default();
+                client_preferred_ip.copy_from_slice(&r[0..4]);
 
-                    if self.available(&in_packet.chaddr, &client_preferred_ip) {
-                        Some(client_preferred_ip)
-                    } else {
-                        None
-                    }
+                if self.available(&in_packet.chaddr, &client_preferred_ip) {
+                    Some(client_preferred_ip)
                 } else {
                     None
                 }
-            });
+            } else {
+                None
+            }
+        });
 
         // Otherwise prefer existing (including expired if available)
         let ip = ip.or_else(|| {
@@ -238,9 +225,7 @@ impl DHCPServer {
 
         // Return reply if ip could be found
         if let Some(ip) = ip {
-            let request_options = in_packet
-                .option(options::PARAMETER_REQUEST_LIST)
-                .unwrap_or(&[]);
+            let request_options = in_packet.option(options::PARAMETER_REQUEST_LIST).unwrap_or(&[]);
             return reply(
                 options::MessageType::Offer,
                 lease_options(&self.server_ip_octets, &self.dns_ips, request_options),
@@ -249,7 +234,7 @@ impl DHCPServer {
                 sender,
                 socket,
             )
-                .await;
+            .await;
         }
 
         Ok(0)
@@ -273,7 +258,7 @@ impl DHCPServer {
                 } else {
                     [x[0], x[1], x[2], x[3]]
                 }
-            }
+            },
         };
         if !self.available(&in_packet.chaddr, &req_ip) {
             return reply(
@@ -284,7 +269,7 @@ impl DHCPServer {
                 sender,
                 socket,
             )
-                .await;
+            .await;
         }
         {
             self.leases.insert(
@@ -292,9 +277,7 @@ impl DHCPServer {
                 (in_packet.chaddr, Instant::now().add(self.lease_duration)),
             );
         }
-        let request_options = in_packet
-            .option(options::PARAMETER_REQUEST_LIST)
-            .unwrap_or(&[]);
+        let request_options = in_packet.option(options::PARAMETER_REQUEST_LIST).unwrap_or(&[]);
         reply(
             options::MessageType::Ack,
             lease_options(&self.server_ip_octets, &self.dns_ips, request_options),
@@ -303,7 +286,7 @@ impl DHCPServer {
             sender,
             socket,
         )
-            .await
+        .await
     }
 
     fn handle_release(&mut self, in_packet: packet::Packet<'_>) {
@@ -317,11 +300,7 @@ impl DHCPServer {
     }
 }
 
-fn lease_options<'a>(
-    router_ip: &'a [u8; 4],
-    dns_ips: &'a [u8; 8],
-    options: &[u8],
-) -> Vec<DhcpOption<'a>> {
+fn lease_options<'a>(router_ip: &'a [u8; 4], dns_ips: &'a [u8; 8], options: &[u8]) -> Vec<DhcpOption<'a>> {
     let mut vec = Vec::new();
 
     vec.push(options::DhcpOption {
@@ -406,9 +385,7 @@ async fn reply(
     if p.broadcast || addr.ip() == IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)) {
         addr.set_ip(IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)));
     }
-    socket
-        .send_to(p.encode(sender.out_buf.as_mut()), &addr)
-        .await
+    socket.send_to(p.encode(sender.out_buf.as_mut()), &addr).await
 }
 
 #[cfg(test)]
@@ -514,23 +491,12 @@ mod tests {
 
         // DHCP offer
         let packet = new_dhcp_discover(request_ip);
-        socket
-            .send_to(&packet, SocketAddr::V4(server_addr.clone()))
-            .await?;
+        socket.send_to(&packet, SocketAddr::V4(server_addr.clone())).await?;
         let (_, _) = socket.recv_from(res_buffer).await?;
         let packet = decode(res_buffer)?;
-        assert_eq!(
-            &[2],
-            packet.option(DHCP_MESSAGE_TYPE).expect("message_type")
-        );
-        assert_eq!(
-            &[255, 255, 255, 0],
-            packet.option(SUBNET_MASK).expect("subnet_mask")
-        );
-        assert_eq!(
-            &server_addr.ip().octets(),
-            packet.option(ROUTER).expect("router")
-        );
+        assert_eq!(&[2], packet.option(DHCP_MESSAGE_TYPE).expect("message_type"));
+        assert_eq!(&[255, 255, 255, 0], packet.option(SUBNET_MASK).expect("subnet_mask"));
+        assert_eq!(&server_addr.ip().octets(), packet.option(ROUTER).expect("router"));
         assert_eq!(
             &server_addr.ip().octets(),
             &packet.option(DOMAIN_NAME_SERVER).expect("dns_servers")[0..4]
@@ -538,9 +504,7 @@ mod tests {
 
         // DHCP request
         let packet = new_dhcp_request(request_ip, server_addr.ip().octets());
-        socket
-            .send_to(&packet, SocketAddr::V4(server_addr.clone()))
-            .await?;
+        socket.send_to(&packet, SocketAddr::V4(server_addr.clone())).await?;
         let (_, _) = socket.recv_from(res_buffer).await?;
         let packet = decode(res_buffer)?;
 
@@ -555,7 +519,7 @@ mod tests {
         let socket = dhcp_server.bind().await.expect("Socket bind");
         let socket_addr = match socket.local_addr().expect("Local UPD Socket") {
             SocketAddr::V4(v4) => v4,
-            _ => panic!("Must be a IPv4 Socket")
+            _ => panic!("Must be a IPv4 Socket"),
         };
 
         let server = dhcp_server.receive_loop(socket);
@@ -564,9 +528,7 @@ mod tests {
             let mut res_buffer: [u8; 300] = [0; 300];
             let r = query(&mut res_buffer, request_ip, socket_addr).await?;
             assert_eq!(&r.yiaddr, &request_ip);
-            exit_handler
-                .send(())
-                .expect("Exit handler send for dhcp server run");
+            exit_handler.send(()).expect("Exit handler send for dhcp server run");
             Ok(())
         };
 
@@ -587,7 +549,7 @@ mod tests {
         let r = rt.block_on(select(timeout, test));
         match r {
             Either::Left(_) => panic!("timeout"),
-            _ => {}
+            _ => {},
         };
     }
 }

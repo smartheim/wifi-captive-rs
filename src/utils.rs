@@ -55,10 +55,7 @@ use std::sync::Arc;
 pub async fn prop_stream(
     wifi_device_path: &dbus::Path<'_>,
     conn: Arc<SyncConnection>,
-) -> Result<
-    SignalStream<PropertiesPropertiesChanged, PropertiesPropertiesChanged>,
-    CaptivePortalError,
-> {
+) -> Result<SignalStream<PropertiesPropertiesChanged, PropertiesPropertiesChanged>, CaptivePortalError> {
     let rule = PropertiesPropertiesChanged::match_rule(None, Some(wifi_device_path)).static_clone();
     let stream: SignalStream<PropertiesPropertiesChanged, PropertiesPropertiesChanged> =
         SignalStream::new(conn, rule, Box::new(|v| v)).await?;
@@ -173,8 +170,7 @@ impl<T: Future> Future for CtrlCSignal<T> {
             let sig = unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.sig) };
             if let Poll::Ready(option) = sig.poll_next(cx) {
                 if let Some(_) = option {
-                    let mut exit_handler_option =
-                        unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.exit_handler) };
+                    let mut exit_handler_option = unsafe { self.as_mut().map_unchecked_mut(|me| &mut me.exit_handler) };
                     // The exit handler is not required, but if available call it.
                     if let Some(exit_handler) = exit_handler_option.take() {
                         let _ = exit_handler.send(());

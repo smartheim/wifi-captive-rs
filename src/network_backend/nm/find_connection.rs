@@ -4,9 +4,7 @@
 use dbus::nonblock;
 
 use super::wifi_settings::{self, VariantMap, WiFiConnectionSettings};
-use crate::network_backend::{
-    NetworkBackend, IN_MEMORY_ONLY, NM_BUSNAME, NM_PATH, NM_SETTINGS_PATH,
-};
+use crate::network_backend::{NetworkBackend, IN_MEMORY_ONLY, NM_BUSNAME, NM_PATH, NM_SETTINGS_PATH};
 use crate::network_interface::{AccessPointCredentials, SSID};
 use crate::CaptivePortalError;
 
@@ -22,9 +20,7 @@ impl NetworkBackend {
             p.connections().await?
         };
         for connection_path in connections {
-            let settings =
-                wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone())
-                    .await?;
+            let settings = wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone()).await?;
             if let Some(settings) = settings {
                 // A matching connection could be found. Replace the settings with new ones and store to disk
                 if settings.seen_bssids.contains(hw) {
@@ -46,9 +42,7 @@ impl NetworkBackend {
             p.connections().await?
         };
         for connection_path in connections {
-            let settings =
-                wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone())
-                    .await?;
+            let settings = wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone()).await?;
             if let Some(settings) = settings {
                 // A matching connection could be found. Replace the settings with new ones and store to disk
                 if &settings.ssid == ssid {
@@ -69,22 +63,13 @@ impl NetworkBackend {
     ) -> Result<(dbus::Path<'a>, dbus::Path<'_>), CaptivePortalError> {
         use super::generated::connection_nm::Connection;
         let p = nonblock::Proxy::new(NM_BUSNAME, connection_path.clone(), self.conn.clone());
-        let settings = wifi_settings::make_arguments_for_ap::<&'static str>(
-            ssid,
-            credentials,
-            Some(old_connection),
-        )?;
-        p.update2(settings, IN_MEMORY_ONLY, VariantMap::new())
-            .await?;
+        let settings = wifi_settings::make_arguments_for_ap::<&'static str>(ssid, credentials, Some(old_connection))?;
+        p.update2(settings, IN_MEMORY_ONLY, VariantMap::new()).await?;
         // Activate connection
         let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
         use super::generated::networkmanager::NetworkManager;
         let active_path = p
-            .activate_connection(
-                connection_path.clone(),
-                self.wifi_device_path.clone(),
-                "/".into(),
-            )
+            .activate_connection(connection_path.clone(), self.wifi_device_path.clone(), "/".into())
             .await?;
         Ok((connection_path, active_path))
     }
