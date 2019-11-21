@@ -8,11 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: hecrj/setup-rust-action@master
+        with:
+          rust-version: nightly
       - uses: actions/checkout@master
       - name: Check for leftover println
         run: ./tests/left_over_println.sh
-      - name: rustfmt nightly install
-        run: rustup toolchain install nightly
-        run: rustup component add rustfmt --toolchain nightly
       - name: Check formatting
         run: cargo +nightly fmt --all -- --check

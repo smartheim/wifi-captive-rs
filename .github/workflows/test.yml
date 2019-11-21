@@ -8,6 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: hecrj/setup-rust-action@master
+      with:
+        rust-version: nightly
     - uses: actions/checkout@master
     - name: Install libusb dependency
       run: sudo apt-get install libdbus-1-dev
