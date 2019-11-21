@@ -1,20 +1,27 @@
 # Wifi-Captive
 
-> WiFi service for Linux devices that opens an access point with a captive portal for easy network configuration from your mobile phone or laptop
+> Wifi-Captive is a service for dynamically setting the WiFi configuration on a Linux device via a captive portal.
+  A web-page allows to enter a WiFi SSID or select a network from a list.
 
 [![Build Status](https://github.com/openhab-nodes/wifi-captive-rs/workflows/Build%20and%20Test/badge.svg)](https://github.com/openhab-nodes/wifi-captive-rs/actions)
 [![](https://meritbadge.herokuapp.com/ohx-addon-publish)](https://crates.io/crates/wifi-captive)
 [![](https://img.shields.io/badge/license-MIT-blue.svg)](http://opensource.org/licenses/MIT)
 
 **Release note: This crate contains a local copy of the dbus crate.
-It relies on a few [async/await modifications](doc/required_dbus_changes.md).
-As soon as those are upstream a new release is going out.**
-
-WiFi Captive Portal is a utility for dynamically setting the WiFi configuration on a Linux device via a captive portal.
-A web-page allows to enter a WiFi SSID or select a network from a list.  
+As soon as upstream has released 0.8, a new release without that copy is going out.**
 
 This service includes a basic DHCP server for assigning IP addresses to connecting clients
-and a DNS server for redirecting all pages to the captive portal. 
+and a DNS server for redirecting all pages to the captive portal.
+
+![](doc/screenshot.jpg)
+
+This software is written in [Rust](https://rustup.rs/) (native compiled binary) and supports the most common network management services:
+
+* *NetworkManager* (Desktop Linux OS),
+* *iwd* (New wifi management service),
+* and *connman* (Embedded Linux).
+
+> ❯ Antique interfaces like ifup/down and wpa_supplicant as well as the kernel API directly are not targeted.
 
 ## Table of Contents
 
@@ -28,20 +35,10 @@ and a DNS server for redirecting all pages to the captive portal.
 
 ## Usage
 
-This software is written in [Rust](https://rustup.rs/) and support
-*NetworkManager* (Systemd-based OS),
-*iwd*,
-and *connman* (Newer, slim OS's)
-as network interface and wifi managers.
+**Download** a binary for your architecture from the Github Releases page or
+as software container from the Github Docker Registry. 
 
-**Compile** with `cargo build`. You need at least Rust 1.39.
-The default is to use the *NetworkManager* backend.
-- If you want to to use [*iwd*](https://wiki.archlinux.org/index.php/Iwd), use `cargo build --features iwd --no-default-features`.
-- If you want to to use [*connman*](https://01.org/connman/documentation), use `cargo build --features connman --no-default-features`. 
-- Enable the "includeui" feature to embed the ui files into the binary.
-  No disk access necessary anymore. This is the default for release builds.
-  
-For software container deployment and cross-compiling read:
+For building instructions, software container deployment and cross-compiling read:
 [Advanced Deployments](doc/deployment.md).
 
 **Start** by first assigning your destination link a static IP (the gateway IP),
@@ -51,14 +48,64 @@ For software container deployment and cross-compiling read:
 Logging is controlled by the `RUST_LOG` env variable.
 It can be set to DEBUG, INFO, WARN, ERROR. Default is ERROR.
   
-Use `RUST_LOG=info cargo run -- -l 3000 -g 127.0.0.1 --dns-port 1535 --dhcp-port 6767` to start the service
-for testing without additional privileges.
-- The hotspot gateway is 127.0.0.1 and the http portal will be on http://127.0.0.1:3000,
+Use `RUST_LOG=info ./wifi-captive -l 3000 -g 127.0.0.1 --dns-port 1535 --dhcp-port 6767` to start the service
+without additional privileges. The command line parameters are decribed below and also if you execute `./wifi-captive -h`.
+- The hotspot gateway for this example is 127.0.0.1 and the http portal will be on http://127.0.0.1:3000,
 - the dns server is on 1535,
 - the dhcp server on 6767.
 
-For production build with `cargo build --release` and run with
-`sudo ./target/release/wifi-captive`. (You don't need to be root! Refer to [System ports](#system-ports)).
+The wifi hotspot will be called "Wifi Connect" and the passphrase is "wificonnect".
+
+Refer to [System ports](#system-ports) if you want to run `./wifi-captive` if you want to run in production mode.
+
+## How it works
+
+WiFi Connect interacts via DBUS with *NetworkManager* or *iwd* or *connman*.
+
+### 1. No connectivity / Connection lost
+
+**Only if** no connectivity is reported
+**and** no WiFi connection can be established for more than 20 seconds although one is configured:
+
+The application detects available WiFi networks and
+opens an access point with a captive portal.
+
+The access point ssid is, by default, `WiFi Connect` with no password.
+
+### 2. Captive Portal
+
+After connecting to the access point, all modern devices and operating systems
+will detect the captive portal and open its web page.
+
+Opening any non encrypted web page will redirect to the captive portal as well.
+
+### 3. Enter WiFi Network Credentials
+
+The captive portal provides the option to select a WiFi from a list
+or enter a SSID directly.
+If necessary a passphrase must be entered for the desired network.
+WEP, WPA2 and WPA2 Enterprise are supported.
+
+### 4. Service Connects to WiFi Network
+
+When the network credentials have been entered,
+the service will disable the access point and try to connect to the network.
+
+If the connection fails, it will enable the access point for another attempt.
+If it succeeds, the configuration will be saved by the used network backend,
+either network-manager or iwd.
+
+## System ports
+
+The default ports for this service to operate are:
+
+* port 80 for the webserver,
+* port 67/68 for the DHCP server and
+* port 53 for the dns server.
+
+Those ports are considered "system" ports and require elevated permissions.
+You need to either run the application as root or set the NET_BINDSERVICE capability like so:
+`sudo setcap CAP_NET_BIND_SERVICE=+eip /path/to/binary`.
 
 ### Command line options
 
@@ -69,19 +116,13 @@ the command line option will take higher precedence.
 
     Print available command line parameters
     
-*   **-d, --portal-dhcp-range** dhcp_range, **$PORTAL_DHCP_RANGE**
-
-    DHCP range of the captive portal WiFi network
-
-    Default: _192.168.42.2,192.168.42.254_
-
 *   **-g, --portal-gateway** gateway, **$PORTAL_GATEWAY**
 
     Gateway of the captive portal WiFi network
 
     Default: _192.168.42.1_
 
-*   **-o, --portal-listening-port** listening_port, **$PORTAL_LISTENING_PORT**
+*   **-l, --portal-listening-port** listening_port, **$PORTAL_LISTENING_PORT**
 
     Listening port of the captive portal web server
 
@@ -89,13 +130,20 @@ the command line option will take higher precedence.
 
 *   **-i, --portal-interface** interface, **$PORTAL_INTERFACE**
 
-    Wireless network interface to be used by WiFi Connect
+    Wireless network interface to be used by WiFi Connect.
+    If not set, the first wireless interface returned by the network backend is used.
 
 *   **-p, --portal-passphrase** passphrase, **$PORTAL_PASSPHRASE**
 
     WPA2 Passphrase of the captive portal WiFi network
 
-    Default: _no passphrase_
+    Default: "wificonnect"
+    
+*   **-f, --passphrase_file** passphrase file, **PORTAL_PASSPHRASE_FILE**
+
+    WPA2 Passphrase of the captive portal WiFi network, given via file.
+    The file should contain the passphrase in plain text, utf8 encoded, in exactly one line.
+    Wifi-Captive will try to watch that file for changes.
 
 *   **-s, --portal-ssid** ssid, **$PORTAL_SSID**
 
@@ -133,43 +181,15 @@ the command line option will take higher precedence.
 
     Default: _false_
 
-## How it works
+## Acknowledgements
 
-WiFi Connect interacts via DBUS with *NetworkManager* or *iwd* (*conman*).
-One of those network managers must be the active network manager on the device's host OS.
+* DHCP: Inspired by https://github.com/krolaw/dhcp4r (Richard Warburton).
+  The implemented version in this crate is rewritten with only the packet struct being similar. 
+* DNS: Inspired by https://github.com/EmilHernvall/dnsguide/blob/master/samples/sample4.rs (Emil Hernvall). 
+  The implemented version in this crate is rewritten. The Query, Record, Header and Packet
+  data structures are similar. 
+* Dbus-rs: A great crate for interfacing DBus. 
 
-### 1. No connectivity / Connection lost
-
-**Only if** no connectivity is reported
-**and** no WiFi connection can be established for more than 20 seconds although one is configured:
-
-The application detects available WiFi networks and
-opens an access point with a captive portal.
-
-The access point ssid is, by default, `WiFi Connect` with no password.
-
-### 2. Captive Portal
-
-After connecting to the access point, all modern devices and operating systems
-will detect the captive portal and open its web page.
-
-Opening any non encrypted web page will redirect to the captive portal as well.
-
-### 4. Enter WiFi Network Credentials
-
-The captive portal provides the option to select a WiFi from a list
-or enter a SSID directly.
-If necessary a passphrase must be entered for the desired network.
-WEP, WPA2 and WPA2 Enterprise are supported.
-
-### 5. Service Connects to WiFi Network
-
-When the network credentials have been entered,
-the service will disable the access point and try to connect to the network.
-
-If the connection fails, it will enable the access point for another attempt.
-If it succeeds, the configuration will be saved by the used network backend,
-either network-manager or iwd.
 
 ## Development, Get Involved
 
@@ -183,19 +203,8 @@ There is not yet a full integration test.
 IMO a good one would fake network manager responses which requires a dbus service.
 The dbus crate is currently (as of Nov 2019) restructuring how dbus services are written.  
 
-## System ports
-
-The default ports as mentioned above are:
-
-* port 80 for the webserver,
-* port 67/68 for DHCP and
-* port 53 for the dns server.
-
-Those ports are considered "system" ports and require elevated permissions.
-You need to either run the application as root or set the NET_BINDSERVICE capability like so:
-`sudo setcap CAP_NET_BIND_SERVICE=+eip /path/to/binary`.
-
-Because this is tedious during development, you can use the helper program *set_net_cap* in `scripts`.
+Because system ports are tedious to work with during development,
+you can use the helper program *set_net_cap* in `scripts`.
 Use it like this: `./scripts/set_net_cap target/debug/wifi-captive`. Just add it as a last build step to your development environment.
 
 It makes use of the fact that a setuid program doesn't require you to enter a password.
@@ -207,15 +216,6 @@ gcc -o scripts/set_net_cap scripts/set_net_cap.c && \
 sudo chown root:root scripts/set_net_cap && \
 sudo chmod +s scripts/set_net_cap
 ``` 
-
-## Acknowledgements
-
-* DHCP: Inspired by https://github.com/krolaw/dhcp4r (Richard Warburton).
-  The implemented version in this crate is rewritten with only the packet struct being similar. 
-* DNS: Inspired by https://github.com/EmilHernvall/dnsguide/blob/master/samples/sample4.rs (Emil Hernvall). 
-  The implemented version in this crate is rewritten. The Query, Record, Header and Packet
-  data structures are similar. 
-* Dbus-rs: A great crate for interfacing DBus. 
 
 ### Similar projects
 

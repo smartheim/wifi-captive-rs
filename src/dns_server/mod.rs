@@ -169,7 +169,7 @@ mod tests {
                     let _ = exit_handler.send(());
                     Ok(())
                 },
-                _ => Err(CaptivePortalError::Generic("Unexpected response")),
+                _ => Err(CaptivePortalError::Generic("Unexpected response".to_owned())),
             }
         };
 

@@ -1,4 +1,13 @@
-# Cross compiling and software container distribution
+# Building and deploying
+
+**Compile** with `cargo build`. You need at least Rust 1.39.
+The default is to use the *NetworkManager* backend.
+- If you want to to use [*iwd*](https://wiki.archlinux.org/index.php/Iwd), use `cargo build --features iwd --no-default-features`.
+- If you want to to use [*connman*](https://01.org/connman/documentation), use `cargo build --features connman --no-default-features`. 
+- Enable the "includeui" feature to embed the ui files into the binary.
+  No disk access necessary anymore. This is the default for release builds.
+  
+## Cross compiling and software container distribution
 
 If you build with `cargo build` the resulting binary will be
 build with the system default linker. This usually means that

@@ -1,11 +1,12 @@
-//! # This module contains the portal type.
+//! # This module contains the portal implementation, spawned by the state machine.
 
 use super::http_server::WifiConnectionRequest;
-use super::network_backend::{AccessPointsChangedStream, NetworkBackend};
+use super::network_backend::{ap_changed_stream, NetworkBackend};
 use super::network_interface::WifiConnection;
 use super::utils::take_optional;
 use super::{dhcp_server, dns_server, http_server, CaptivePortalError};
 
+use crate::{NetworkManagerState, WifiConnectionEvent};
 use futures_core::future::BoxFuture;
 use futures_util::{FutureExt, StreamExt};
 use std::future::Future;
@@ -14,7 +15,6 @@ use std::pin::Pin;
 use std::task;
 use std::task::Poll;
 use std::time::Duration;
-use tokio::timer::Delay;
 
 /// The portal type offers a web-ui and redirection services ("Captive Portal"). It stays online
 /// for a certain configurable time and returns when the user has selected a wifi SSID and entered
@@ -36,7 +36,7 @@ pub struct Portal<'a> {
     /// Internal: This future is polled by this wrapping future to determine if outside wants us to quit.
     exit_receiver: Option<tokio::sync::oneshot::Receiver<()>>,
     /// The timeout future. Will be polled by this wrapping future.
-    timeout: Option<Delay>,
+    timeout: Option<BoxFuture<'a, Result<NetworkManagerState, CaptivePortalError>>>,
     /// The connection changed future. Will be polled by this wrapping future.
     hotspot_stopped_fut: Option<BoxFuture<'a, Result<(), CaptivePortalError>>>,
     /// The http server future. Will be polled by this wrapping future.
@@ -83,7 +83,7 @@ impl<'a> Portal<'a> {
 
         let nm_clone = nm.clone();
         tokio::spawn(async move {
-            let stream = AccessPointsChangedStream::new(&nm_clone).await;
+            let stream = ap_changed_stream(&nm_clone).await;
             let mut stream = match stream {
                 Err(e) => {
                     error!("{}", e);
@@ -92,12 +92,16 @@ impl<'a> Portal<'a> {
                 Ok(stream) => stream,
             };
             for event in stream.next().await {
-                match event {
-                    Err(e) => {
-                        error!("{}", e);
-                        return;
-                    },
-                    Ok(event) => http_server::update_network(http_state.clone(), event).await,
+                let access_point = nm_clone.access_point(event.path).await;
+                if let Ok(access_point) = access_point {
+                    if access_point.is_own {
+                        continue;
+                    }
+                    let event = WifiConnectionEvent {
+                        event: event.event,
+                        access_point,
+                    };
+                    http_server::update_network(http_state.clone(), event).await;
                 }
             }
         });
@@ -110,7 +114,7 @@ impl<'a> Portal<'a> {
             dhcp_exit,
             exit_receiver: Some(exit_receiver),
             http_exit: Some(http_exit),
-            timeout: Some(tokio::timer::delay_for(timeout)),
+            timeout: Some(nm.wait_for_connectivity(config.internet_connectivity, timeout).boxed()),
             hotspot_stopped_fut: Some(nm.on_hotspot_stopped(wifi_sta_active_connection).boxed()),
         };
 

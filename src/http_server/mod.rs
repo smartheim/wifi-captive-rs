@@ -110,7 +110,6 @@ async fn http_router(
         return file_serve::serve_file(&ui_path, response, &req, &state);
     }
     if req.method() == Method::POST && req.uri().path() == "/connect" {
-        info!("connect1");
         // Body is a stream of chunks of bytes.
         let mut body = req.into_body();
         let mut output = Vec::new();
@@ -119,18 +118,17 @@ async fn http_router(
             let bytes = chunk?.into_bytes();
             output.extend(&bytes[..]);
         }
-        info!("connect2");
+
         let parsed: WifiConnectionRequest = serde_json::from_slice(&output[..])?;
         let mut state = state.lock().expect("http state mutex lock");
         let sender = state.connection_sender.take().expect("http state mutex lock");
         // release mutex as soon as possible
         drop(state);
-        info!("connect3");
+
         sender
             .send(Some(parsed))
-            .map_err(|_| CaptivePortalError::Generic("Failed to internally route data"))?;
+            .map_err(|_| CaptivePortalError::HttpRoutingFailed)?;
         *response.status_mut() = StatusCode::OK;
-        info!("connect4");
         return Ok(response);
     }
 
@@ -293,9 +291,9 @@ impl HttpServer {
 /// Call this method to update, add, remove a network
 pub async fn update_network(http_state: HttpServerStateSync, event: WifiConnectionEvent) {
     let mut state = http_state.lock().expect("Mutex lock for http state on update_network");
-    info!("Add network {}", &event.connection.ssid);
+    info!("Add network {}", &event.access_point.ssid);
     let ref mut connections = state.connections.0;
-    match connections.iter().position(|n| n.ssid == event.connection.ssid) {
+    match connections.iter().position(|n| n.ssid == event.access_point.ssid) {
         Some(pos) => {
             match event.event {
                 WifiConnectionEventType::Added => {
@@ -303,7 +301,7 @@ pub async fn update_network(http_state: HttpServerStateSync, event: WifiConnecti
                     let dest = connections
                         .get_mut(pos)
                         .expect("update_network: Vector access on connections");
-                    mem::replace(dest, event.connection.clone());
+                    mem::replace(dest, event.access_point.clone());
                 },
                 WifiConnectionEventType::Removed => {
                     connections.remove(pos);
@@ -311,7 +309,7 @@ pub async fn update_network(http_state: HttpServerStateSync, event: WifiConnecti
             };
         },
         None => {
-            state.connections.0.push(event.connection.clone());
+            state.connections.0.push(event.access_point.clone());
         },
     };
     sse::send_wifi_connection(&mut state.sse, &event).expect("json encoding failed");

@@ -2,13 +2,13 @@
 //! network manager state as well as connection and device state.
 
 use futures_util::stream::StreamExt;
-use tokio::future::FutureExt;
+use tokio::stream::StreamExt as TokioStream;
 
 use super::NetworkBackend;
 use super::NM_BUSNAME;
-use super::NM_PATH;
 use crate::dbus_tokio::SignalStream;
-use crate::network_interface::{ConnectionState, Connectivity, NetworkManagerState};
+use crate::network_backend::NM_PATH;
+use crate::network_interface::{ConnectionState, NetworkManagerState};
 use crate::CaptivePortalError;
 use dbus::message::SignalArgs;
 use dbus::nonblock;
@@ -21,28 +21,15 @@ impl From<u32> for NetworkManagerState {
             20 => NetworkManagerState::Disconnected,
             30 => NetworkManagerState::Disconnecting,
             40 => NetworkManagerState::Connecting,
-            50 => NetworkManagerState::Connected,
-            60 => NetworkManagerState::Connected,
+            // NM_STATE_CONNECTED_LOCAL
+            // There is only local IPv4 and/or IPv6 connectivity, but no default route to access the Internet.
+            50 => NetworkManagerState::Disconnected,
+            // NM_STATE_CONNECTED_SITE
+            60 => NetworkManagerState::ConnectedLimited,
             70 => NetworkManagerState::Connected,
             _ => {
                 warn!("Undefined Network Manager state: {}", state);
                 NetworkManagerState::Unknown
-            },
-        }
-    }
-}
-
-impl From<u32> for Connectivity {
-    fn from(state: u32) -> Self {
-        match state {
-            0 => Connectivity::Unknown,
-            1 => Connectivity::None,
-            2 => Connectivity::Portal,
-            3 => Connectivity::Limited,
-            4 => Connectivity::Full,
-            _ => {
-                warn!("Undefined connectivity state: {}", state);
-                Connectivity::Unknown
             },
         }
     }
@@ -54,12 +41,8 @@ impl NetworkBackend {
     pub async fn print_connection_changes(&self) -> Result<(), CaptivePortalError> {
         use super::connection_active::ConnectionActiveStateChanged as ConnectionActiveChanged;
 
-        let rule = ConnectionActiveChanged::match_rule(None, None).static_clone();
-        let stream: SignalStream<ConnectionActiveChanged, ConnectionActiveChanged> =
-            SignalStream::new(self.conn.clone(), rule, Box::new(|v| v)).await?;
-        pin_utils::pin_mut!(stream);
-        let mut stream = stream; // Idea IDE Workaround
-
+        let mut stream =
+            SignalStream::<ConnectionActiveChanged>::prop_new(&self.wifi_device_path, self.conn.clone()).await?;
         while let Some((value, path)) = stream.next().await {
             info!(
                 "Connection state changed: {:?} {} on {}",
@@ -72,47 +55,86 @@ impl NetworkBackend {
         Ok(())
     }
 
-    pub async fn wait_until_state(
-        &self,
-        expected_state: NetworkManagerState,
-        timeout: Option<std::time::Duration>,
-        negate_condition: bool,
-    ) -> Result<NetworkManagerState, CaptivePortalError> {
+    /// Continuously print connection state changes
+    #[allow(dead_code)]
+    pub async fn print_connectivity_changes(&self) -> Result<(), CaptivePortalError> {
         use super::networkmanager::NetworkManagerStateChanged as StateChanged;
 
         let state = self.state().await?;
-        if (expected_state == state) ^ negate_condition {
+        info!("Connectivity state: {:?}", state);
+
+        let mut stream = SignalStream::<StateChanged>::prop_new(&NM_PATH.to_owned().into(), self.conn.clone()).await?;
+        while let Some((value, _path)) = stream.next().await {
+            let state = NetworkManagerState::from(value.state);
+            info!("Connectivity state changed: {:?}", state);
+        }
+
+        Ok(())
+    }
+
+    /// The returned future resolves when either the timeout expired or state of the
+    /// **active** connection (eg /org/freedesktop/NetworkManager/ActiveConnection/12) is the expected state
+    /// or changes into the expected state.
+    pub async fn wait_for_connectivity(
+        &self,
+        internet_connectivity: bool,
+        timeout: std::time::Duration,
+    ) -> Result<NetworkManagerState, CaptivePortalError> {
+        self.connectivity_changed(timeout, |state| {
+            state == NetworkManagerState::Connected
+                || (state == NetworkManagerState::ConnectedLimited && !internet_connectivity)
+        })
+        .await
+    }
+
+    /// The returned future resolves when either the timeout expired or (internet) connectivity is lost
+    pub async fn wait_for_connectivity_lost(
+        &self,
+        internet_connectivity: bool,
+        timeout: std::time::Duration,
+    ) -> Result<NetworkManagerState, CaptivePortalError> {
+        self.connectivity_changed(timeout, |state| {
+            state != NetworkManagerState::Connected
+                && (state != NetworkManagerState::ConnectedLimited || internet_connectivity)
+        })
+        .await
+    }
+
+    /// Waits up to "timeout" for the network backend to report the condition given in "condition".
+    async fn connectivity_changed<F>(
+        &self,
+        timeout: std::time::Duration,
+        condition: F,
+    ) -> Result<NetworkManagerState, CaptivePortalError>
+    where
+        F: Fn(NetworkManagerState) -> bool,
+    {
+        use super::networkmanager::NetworkManagerStateChanged as StateChanged;
+
+        let mut state = self.state().await?;
+        if condition(state) {
             return Ok(state);
         }
 
-        let rule = StateChanged::match_rule(None, None).static_clone();
-        let stream: SignalStream<StateChanged, StateChanged> =
-            SignalStream::new(self.conn.clone(), rule, Box::new(|v| v)).await?;
-        pin_utils::pin_mut!(stream);
-        let mut stream = stream; // Idea IDE Workaround
-
-        match timeout {
-            Some(timeout) => {
-                while let Ok(state_change) = stream.next().timeout(timeout).await {
-                    if let Some((value, _path)) = state_change {
-                        let state = NetworkManagerState::from(value.state);
-                        if (expected_state == state) ^ negate_condition {
-                            return Ok(state);
-                        }
-                    }
+        let mut stream = SignalStream::<StateChanged>::prop_new(&NM_PATH.to_owned().into(), self.conn.clone())
+            .await?
+            .timeout(timeout);
+        while let Some(state_change) = stream.next().await {
+            if let Ok((value, _path)) = state_change {
+                state = NetworkManagerState::from(value.state);
+                if condition(state) {
+                    return Ok(state);
                 }
-            },
-            None => {
-                while let Some((value, _path)) = stream.next().await {
-                    let state = NetworkManagerState::from(value.state);
-                    if (expected_state == state) ^ negate_condition {
-                        return Ok(state);
-                    }
-                }
-            },
+            } else {
+                break;
+            }
         }
 
-        Ok(NetworkManagerState::Unknown)
+        if condition(state) {
+            Ok(state)
+        } else {
+            Err(CaptivePortalError::NotRequiredConnectivity(state))
+        }
     }
 
     /// The returned future resolves when either the timeout expired or state of the
@@ -136,59 +158,22 @@ impl NetworkBackend {
         use super::connection_active::ConnectionActiveStateChanged as StateChanged;
 
         let rule = StateChanged::match_rule(None, None).static_clone();
-        let stream: SignalStream<StateChanged, u32> =
-            SignalStream::new(self.conn.clone(), rule, Box::new(|v: StateChanged| v.state)).await?;
+        let stream: SignalStream<StateChanged> = SignalStream::new(self.conn.clone(), rule).await?;
         pin_utils::pin_mut!(stream);
-        let mut stream = stream; // Idea IDE Workaround
+        let mut stream = stream.timeout(timeout); // Idea IDE Workaround
 
-        while let Ok(state_change) = stream.next().timeout(timeout).await {
-            if let Some((state, _path)) = state_change {
-                let state = ConnectionState::from(state);
+        while let Some(state_change) = stream.next().await {
+            if let Ok((state, _path)) = state_change {
+                let state = ConnectionState::from(state.state);
                 if (state == expected_state) ^ negate {
                     return Ok(state);
                 }
+            } else {
+                break;
             }
         }
 
         let state: ConnectionState = p.state().await?.into();
-        Ok(state)
-    }
-
-    /// The returned future resolves when either the timeout expired or state of the
-    /// **active** connection (eg /org/freedesktop/NetworkManager/ActiveConnection/12) is the expected state
-    /// or changes into the expected state.
-    pub async fn wait_for_connectivity(
-        &self,
-        internet_connectivity: bool,
-        timeout: std::time::Duration,
-    ) -> Result<Connectivity, CaptivePortalError> {
-        let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
-        use super::networkmanager::NetworkManager;
-
-        let state = Connectivity::from(p.connectivity().await?);
-        if state == Connectivity::Full || (state == Connectivity::Limited && !internet_connectivity) {
-            return Ok(state);
-        }
-
-        use super::networkmanager::NetworkManagerStateChanged as StateChanged;
-
-        let rule = StateChanged::match_rule(None, None).static_clone();
-        let stream: SignalStream<StateChanged, u32> =
-            SignalStream::new(self.conn.clone(), rule, Box::new(|v: StateChanged| v.state)).await?;
-        pin_utils::pin_mut!(stream);
-        let mut stream = stream; // Idea IDE Workaround
-
-        while let Ok(state_change) = stream.next().timeout(timeout).await {
-            // Whenever network managers state change, request the current connectivity
-            if let Some((_state, _path)) = state_change {
-                let state: Connectivity = p.connectivity().await?.into();
-                if state == Connectivity::Full || (state == Connectivity::Limited && !internet_connectivity) {
-                    return Ok(state);
-                }
-            }
-        }
-
-        let state: Connectivity = p.connectivity().await?.into();
         Ok(state)
     }
 

@@ -32,13 +32,13 @@ pub struct Packet<'a> {
 /// Parses Packet from byte array
 pub fn decode(p: &[u8]) -> Result<Packet, CaptivePortalError> {
     if p[236..240] != COOKIE {
-        return Err(CaptivePortalError::Generic("Invalid Cookie"));
+        return Err(CaptivePortalError::DhcpError("Invalid Cookie"));
     }
 
     let reply = match p[0] {
         BOOT_REPLY => true,
         BOOT_REQUEST => false,
-        _ => return Err(CaptivePortalError::Generic("Invalid OpCode")),
+        _ => return Err(CaptivePortalError::DhcpError("Invalid OpCode")),
     };
 
     let mut options = Vec::new();
@@ -62,7 +62,7 @@ pub fn decode(p: &[u8]) -> Result<Packet, CaptivePortalError> {
                 }
             }
         }
-        return Err(CaptivePortalError::Generic("Options Problem"));
+        return Err(CaptivePortalError::DhcpError("Options Problem"));
     }
     Ok(Packet {
         reply,
@@ -94,17 +94,12 @@ impl<'a> Packet<'a> {
     pub fn message_type(&self) -> Result<MessageType, CaptivePortalError> {
         if let Some(x) = self.option(DHCP_MESSAGE_TYPE) {
             if x.len() != 1 {
-                Err(CaptivePortalError::GenericO(format![
-                    "Invalid length for DHCP MessageType: {}",
-                    x.len()
-                ]))
+                Err(CaptivePortalError::DhcpError("Invalid length for DHCP MessageType"))
             } else {
                 MessageType::from(x[0])
             }
         } else {
-            Err(CaptivePortalError::GenericO(format![
-                "Packet does not have MessageType option"
-            ]))
+            Err(CaptivePortalError::DhcpError("Packet does not have MessageType option"))
         }
     }
 

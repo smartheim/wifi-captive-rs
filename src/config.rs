@@ -1,4 +1,4 @@
-//! The command line configuration is defined in this module.
+//! # The command line configuration is defined in this module.
 
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
@@ -11,12 +11,27 @@ pub struct Config {
     pub interface: Option<String>,
 
     /// ssid of the captive portal WiFi network
-    #[structopt(short, long = "portal-ssid", default_value = "OHX WiFi Connect", env = "PORTAL_SSID")]
+    #[structopt(short, long = "portal-ssid", default_value = "WiFi Connect", env = "PORTAL_SSID")]
     pub ssid: String,
 
     /// WPA2 Passphrase of the captive portal WiFi network
-    #[structopt(short, long = "portal-passphrase", env = "PORTAL_PASSPHRASE")]
-    pub passphrase: Option<String>,
+    #[structopt(
+        short,
+        long = "portal-passphrase",
+        env = "PORTAL_PASSPHRASE",
+        default_value = "wificonnect"
+    )]
+    pub passphrase: String,
+
+    /// WPA2 Passphrase of the captive portal WiFi network given via a file.
+    /// The file should contain the passphrase in plain text, utf8 encoded, in exactly one line.
+    #[structopt(
+        parse(from_os_str),
+        short = "f",
+        long = "passphrase-file",
+        env = "PORTAL_PASSPHRASE_FILE"
+    )]
+    pub passphrase_file: Option<PathBuf>,
 
     /// WPA2-Enterprise Identity for the captive portal WiFi network
     #[structopt(long = "portal-identity", env = "PORTAL_IDENTITY")]

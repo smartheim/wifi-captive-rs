@@ -278,7 +278,7 @@ impl MessageType {
             7 => MessageType::Release,
             8 => MessageType::Inform,
             _ => {
-                return Err(CaptivePortalError::GenericO(format![
+                return Err(CaptivePortalError::Generic(format![
                     "Invalid DHCP Message Type: {:?}",
                     val
                 ]))

@@ -1,3 +1,5 @@
+//! # The programs state machine. Each state carries its required data, no side-effects.
+
 use crate::config::Config;
 use crate::http_server::WifiConnectionRequest;
 use crate::network_backend::NetworkBackend;
@@ -91,7 +93,9 @@ impl StateMachine {
                     NetworkManagerState::Disconnecting | NetworkManagerState::Connecting => {
                         Some(StateMachine::TryReconnect(config, nm))
                     },
-                    NetworkManagerState::Connected => Some(StateMachine::Connected(config, nm)),
+                    NetworkManagerState::Connected | NetworkManagerState::ConnectedLimited => {
+                        Some(StateMachine::Connected(config, nm))
+                    },
                 })
             },
             StateMachine::TryReconnect(config, nm) => {
@@ -120,17 +124,21 @@ impl StateMachine {
                     .await;
                 info!("Current connectivity: {:?}", c_state);
 
+                match c_state {
+                    Ok(_) => {},
+                    Err(CaptivePortalError::NotRequiredConnectivity(_)) => {
+                        return Ok(Some(StateMachine::TryReconnect(config, nm)))
+                    },
+                    Err(e) => return Err(e),
+                }
+
                 if config.quit_after_connected {
                     return Ok(Some(StateMachine::Exit(nm)));
                 }
 
                 // Await a connectivity change, ctrl+c or the timeout
                 let r = nm
-                    .wait_until_state(
-                        NetworkManagerState::Connected,
-                        Some(Duration::from_secs(config.retry_in)),
-                        true,
-                    )
+                    .wait_for_connectivity_lost(config.internet_connectivity, Duration::from_secs(config.retry_in))
                     .ctrl_c()
                     .await;
 
@@ -142,12 +150,10 @@ impl StateMachine {
             },
             StateMachine::ActivatePortal(config, nm) => {
                 nm.enable_networking_and_wifi().await?;
+                nm.deactivate_hotspots().await?;
 
                 info!("Acquire wifi access point list. This may take a minute ...");
-                let mut wifi_access_points = nm.list_access_points(false).await?;
-                if wifi_access_points.is_empty() {
-                    wifi_access_points = nm.list_access_points(true).await?;
-                }
+                let wifi_access_points = nm.list_access_points(Duration::from_secs(7)).await?;
 
                 use tokio::future::FutureExt;
 
@@ -203,7 +209,11 @@ impl StateMachine {
                 let connection = nm
                     .connect_to(
                         network.ssid,
-                        credentials_from_data(network.passphrase, network.identity, network.mode.try_into()?)?,
+                        credentials_from_data(
+                            network.passphrase.unwrap_or_default(),
+                            network.identity,
+                            network.mode.try_into()?,
+                        )?,
                         network.hw,
                         true,
                     )

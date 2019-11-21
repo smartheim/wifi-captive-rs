@@ -14,17 +14,14 @@ use std::os::unix::io::RawFd;
 struct ConnHandle(*mut ffi::DBusConnection, bool);
 
 unsafe impl Send for ConnHandle {}
-
 unsafe impl Sync for ConnHandle {}
 
 impl Drop for ConnHandle {
     fn drop(&mut self) {
-        if self.1 {
-            unsafe {
-                ffi::dbus_connection_close(self.0);
-                ffi::dbus_connection_unref(self.0);
-            }
-        }
+        if self.1 { unsafe {
+            ffi::dbus_connection_close(self.0);
+            ffi::dbus_connection_unref(self.0);
+        }}
     }
 }
 
@@ -32,7 +29,6 @@ impl Drop for ConnHandle {
 struct WatchHandle(*mut ffi::DBusWatch);
 
 unsafe impl Send for WatchHandle {}
-
 unsafe impl Sync for WatchHandle {}
 
 /// Which bus to connect to
@@ -60,7 +56,7 @@ pub struct Watch {
 
 impl Watch {
     unsafe fn from_raw_enabled(watch: *mut ffi::DBusWatch) -> (Self, bool) {
-        let mut w = Watch { fd: ffi::dbus_watch_get_unix_fd(watch), read: false, write: false };
+        let mut w = Watch { fd: ffi::dbus_watch_get_unix_fd(watch), read: false, write: false};
         let enabled = ffi::dbus_watch_get_enabled(watch) != 0;
         let flags = ffi::dbus_watch_get_flags(watch);
         use std::os::raw::c_uint;
@@ -90,41 +86,30 @@ fn calc_rw(list: &HashMap<WatchHandle, (Watch, bool)>) -> u8 {
 
 impl WatchMap {
     fn new(conn: ConnHandle) -> Box<WatchMap> {
-        extern "C" fn add_watch_cb(watch: *mut ffi::DBusWatch, data: *mut c_void) -> u32 {
-            unsafe {
-                let wm: &WatchMap = &*(data as *mut _);
-                wm.list.lock().unwrap().insert(WatchHandle(watch), Watch::from_raw_enabled(watch));
-                1
-            }
-        }
-        extern "C" fn remove_watch_cb(watch: *mut ffi::DBusWatch, data: *mut c_void) {
-            unsafe {
-                let wm: &WatchMap = &*(data as *mut _);
-                wm.list.lock().unwrap().remove(&WatchHandle(watch));
-            }
-        }
-        extern "C" fn toggled_watch_cb(watch: *mut ffi::DBusWatch, data: *mut c_void) {
-            unsafe {
-                let wm: &WatchMap = &*(data as *mut _);
-                let mut list = wm.list.lock().unwrap();
-                let (_, ref mut b) = list.get_mut(&WatchHandle(watch)).unwrap();
-                *b = ffi::dbus_watch_get_enabled(watch) != 0;
-                wm.current_rw.store(calc_rw(&list), Ordering::Release);
-            }
-        }
+        extern "C" fn add_watch_cb(watch: *mut ffi::DBusWatch, data: *mut c_void) -> u32 { unsafe {
+            let wm: &WatchMap = &*(data as *mut _);
+            wm.list.lock().unwrap().insert(WatchHandle(watch), Watch::from_raw_enabled(watch));
+            1
+        }}
+        extern "C" fn remove_watch_cb(watch: *mut ffi::DBusWatch, data: *mut c_void) { unsafe {
+            let wm: &WatchMap = &*(data as *mut _);
+            wm.list.lock().unwrap().remove(&WatchHandle(watch));
+        }}
+        extern "C" fn toggled_watch_cb(watch: *mut ffi::DBusWatch, data: *mut c_void) { unsafe {
+            let wm: &WatchMap = &*(data as *mut _);
+            let mut list = wm.list.lock().unwrap();
+            let (_, ref mut b) = list.get_mut(&WatchHandle(watch)).unwrap();
+            *b = ffi::dbus_watch_get_enabled(watch) != 0;
+            wm.current_rw.store(calc_rw(&list), Ordering::Release);
+        }}
 
         let mut wm = Box::new(WatchMap {
-            conn,
-            list: Default::default(),
-            current_rw: Default::default(),
-            current_fd: None,
+            conn, list: Default::default(), current_rw: Default::default(), current_fd: None
         });
         let wptr: &WatchMap = &wm;
-        if unsafe {
-            ffi::dbus_connection_set_watch_functions(wm.conn.0,
-                                                     Some(add_watch_cb), Some(remove_watch_cb), Some(toggled_watch_cb), wptr as *const _ as *mut _, None)
-        } == 0 {
-            panic!("Cannot enable watch tracking (OOM?)")
+        if unsafe { ffi::dbus_connection_set_watch_functions(wm.conn.0,
+            Some(add_watch_cb), Some(remove_watch_cb), Some(toggled_watch_cb), wptr as *const _ as *mut _, None) } == 0 {
+                panic!("Cannot enable watch tracking (OOM?)")
         }
 
         {
@@ -148,11 +133,9 @@ impl WatchMap {
 impl Drop for WatchMap {
     fn drop(&mut self) {
         let wptr: &WatchMap = &self;
-        if unsafe {
-            ffi::dbus_connection_set_watch_functions(self.conn.0,
-                                                     None, None, None, wptr as *const _ as *mut _, None)
-        } == 0 {
-            panic!("Cannot disable watch tracking (OOM?)")
+        if unsafe { ffi::dbus_connection_set_watch_functions(self.conn.0,
+            None, None, None, wptr as *const _ as *mut _, None) } == 0 {
+                panic!("Cannot disable watch tracking (OOM?)")
         }
     }
 }
@@ -183,7 +166,7 @@ impl Drop for Channel {
 
 impl Channel {
     #[inline(always)]
-    pub(crate) fn conn(&self) -> *mut ffi::DBusConnection {
+    pub (crate) fn conn(&self) -> *mut ffi::DBusConnection {
         self.handle.0
     }
 
@@ -211,7 +194,7 @@ impl Channel {
         };
         let conn = unsafe { ffi::dbus_bus_get_private(b, e.get_mut()) };
         if conn.is_null() {
-            return Err(e);
+            return Err(e)
         }
         Self::conn_from_ptr(conn)
     }
@@ -225,7 +208,7 @@ impl Channel {
         let mut e = Error::empty();
         let conn = unsafe { ffi::dbus_connection_open_private(to_c_str(address).as_ptr(), e.get_mut()) };
         if conn.is_null() {
-            return Err(e);
+            return Err(e)
         }
         Self::conn_from_ptr(conn)
     }
@@ -261,9 +244,13 @@ impl Channel {
     }
 
 
-    /// Puts a message into libdbus out queue. Use "flush" or "read_write" to make sure it is sent over the wire.
+    /// Puts a message into libdbus out queue, and tries to send it.
     ///
     /// Returns a serial number than can be used to match against a reply.
+    ///
+    /// Note: usually the message is sent when this call happens, but in
+    /// case internal D-Bus buffers are full, it will be left in the out queue.
+    /// Call "flush" or "read_write" to retry flushing the out queue.
     pub fn send(&self, msg: Message) -> Result<u32, ()> {
         let mut serial = 0u32;
         let r = unsafe { ffi::dbus_connection_send(self.conn(), msg.ptr(), &mut serial) };
@@ -283,7 +270,7 @@ impl Channel {
         let mut e = Error::empty();
         let response = unsafe {
             ffi::dbus_connection_send_with_reply_and_block(self.conn(), msg.ptr(),
-                                                           timeout.as_millis() as c_int, e.get_mut())
+                timeout.as_millis() as c_int, e.get_mut())
         };
         if response.is_null() {
             return Err(e);
@@ -311,12 +298,6 @@ impl Channel {
         }
     }
 
-    /// True if there are incoming queued messages
-    pub fn incoming_queue_has_messages(&self) -> bool {
-        let state =  unsafe {  ffi::dbus_connection_get_dispatch_status(self.conn()) };
-        state == ffi::DBusDispatchStatus::DataRemains
-    }
-
     /// Removes a message from the incoming queue, or returns None if the queue is empty.
     ///
     /// Use "read_write" first, so that messages are put into the incoming queue.
@@ -336,7 +317,7 @@ impl Channel {
     /// Removes a message from the incoming queue, or waits until timeout if the queue is empty.
     ///
     pub fn blocking_pop_message(&self, timeout: Duration) -> Result<Option<Message>, Error> {
-        if let Some(msg) = self.pop_message() { return Ok(Some(msg)); }
+        if let Some(msg) = self.pop_message() { return Ok(Some(msg)) }
         self.read_write(Some(timeout)).map_err(|_|
             Error::new_failed("Failed to read/write data, disconnected from D-Bus?")
         )?;
@@ -349,7 +330,7 @@ impl Channel {
     /// something else than one file descriptor,
     /// but this should be extremely unlikely to ever happen.)
     pub fn set_watch_enabled(&mut self, enable: bool) {
-        if enable == self.watchmap.is_some() { return; }
+        if enable == self.watchmap.is_some() { return }
         if enable {
             self.watchmap = Some(WatchMap::new(ConnHandle(self.conn(), false)));
         } else {
@@ -390,7 +371,7 @@ impl Channel {
             wlist = vec!(Watch {
                 fd: wlist[0].fd,
                 read: wlist[0].read || wlist[1].read,
-                write: wlist[0].write || wlist[1].write,
+                write: wlist[0].write || wlist[1].write
             });
         }
 
@@ -414,18 +395,20 @@ impl Sender for std::cell::RefCell<Vec<Message>> {
     }
 }
 
+/// Token used to identify a callback in the MatchingReceiver trait
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct Token(pub usize);
+
 /// Abstraction over different connections that receive data
 pub trait MatchingReceiver {
     /// Type of callback
     type F;
-    /// R type
-    type R;
     /// Add a callback to be called in case a message matches.
     ///
     /// Returns an id that can be used to remove the callback.
-    fn start_receive(&self, m: MatchRule<'static>, f: Self::F) -> u32;
+    fn start_receive(&self, m: MatchRule<'static>, f: Self::F) -> Token;
     /// Remove a previously added callback.
-    fn stop_receive(&self, id: u32) -> Option<(MatchRule<'static>, Self::F)>;
+    fn stop_receive(&self, id: Token) -> Option<(MatchRule<'static>, Self::F)>;
 }
 
 impl Sender for Channel {
@@ -446,7 +429,7 @@ fn peer(m: &Message) -> Option<Message> {
     if let Some(intf) = m.interface() {
         if &*intf != "org.freedesktop.DBus.Peer" { return None; }
         if let Some(method) = m.member() {
-            if &*method == "Ping" { return Some(m.method_return()); }
+            if &*method == "Ping" { return Some(m.method_return()) }
             if &*method == "GetMachineId" {
                 let mut r = m.method_return();
                 unsafe {
@@ -454,10 +437,10 @@ fn peer(m: &Message) -> Option<Message> {
                     if !id.is_null() {
                         r = r.append1(c_str_to_slice(&(id as *const _)).unwrap());
                         ffi::dbus_free(id as *mut _);
-                        return Some(r);
+                        return Some(r)
                     }
                 }
-                return Some(m.error(&"org.freedesktop.DBus.Error.Failed".into(), &to_c_str("Failed to retreive UUID")));
+                return Some(m.error(&"org.freedesktop.DBus.Error.Failed".into(), &to_c_str("Failed to retreive UUID")))
             }
         }
         Some(m.error(&"org.freedesktop.DBus.Error.UnknownMethod".into(), &to_c_str("Method does not exist")))
@@ -495,7 +478,7 @@ fn channel_simple_test() {
             println!("{:?}", msg);
             if msg.get_reply_serial() == Some(reply) {
                 let r = msg.as_result().unwrap();
-                let z: crate::arg::Array<&str, _> = r.get1().unwrap();
+                let z: crate::arg::Array<&str, _>  = r.get1().unwrap();
                 for n in z {
                     println!("{}", n);
                     if n == my_name { return; } // Hooray, we found ourselves!

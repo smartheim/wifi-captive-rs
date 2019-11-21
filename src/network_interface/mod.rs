@@ -1,4 +1,12 @@
-pub mod dbus_tokio;
+//! # Generic types, traits and methods for network interfaces
+//! Find implementations in [`network_backend`]
+mod connection;
+mod signal_stream;
+
+pub mod dbus_tokio {
+    pub use super::connection::*;
+    pub use super::signal_stream::SignalStream;
+}
 
 use crate::CaptivePortalError;
 use core::fmt;
@@ -39,20 +47,12 @@ impl fmt::Display for WifiConnectionEventType {
 
 #[derive(Serialize)]
 pub struct WifiConnectionEvent {
-    pub connection: WifiConnection,
+    pub access_point: WifiConnection,
     pub event: WifiConnectionEventType,
 }
 
 #[derive(Serialize)]
 pub struct WifiConnections(pub Vec<WifiConnection>);
-
-#[derive(Debug, Clone)]
-pub enum AccessPointCredentials {
-    None,
-    Wep { passphrase: String },
-    Wpa { passphrase: String },
-    Enterprise { identity: String, passphrase: String },
-}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ConnectionState {
@@ -64,33 +64,42 @@ pub enum ConnectionState {
 }
 
 /// The connection state.
-/// iwd: "connected", "disconnected", "connecting", "disconnecting", "roaming"
+/// This is mapped to iwd's internal "connected", "disconnected", "connecting", "disconnecting", "roaming" states.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum NetworkManagerState {
+    /// Networking state is unknown. This indicates a daemon error that makes it unable to reasonably assess the state.
     Unknown,
+    /// Networking is not enabled, the system is being suspended or resumed from suspend.
     Asleep,
+    /// There is no active network connection.
     Disconnected,
+    /// Network connections are being cleaned up. The applications should tear down their network sessions.
     Disconnecting,
+    /// A network connection is being started
     Connecting,
+    /// There is only site-wide IPv4 and/or IPv6 connectivity. This means a default route is available,
+    /// but the Internet connectivity check did not succeed.
+    ///
+    /// Network manager checks for connectivity on its own.
+    /// The connman backend tries to perform a dns resolving and establish a tcp connection
+    /// to prove connectivity.
+    ConnectedLimited,
+    /// There is global IPv4 and/or IPv6 Internet connectivity.
+    /// This means the Internet connectivity check succeeded.
     Connected,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Connectivity {
-    Unknown,
-    None,
-    Portal,
-    Limited,
-    Full,
-}
-
-impl From<NetworkManagerState> for Connectivity {
-    fn from(state: NetworkManagerState) -> Self {
-        match state {
-            NetworkManagerState::Connected => Connectivity::Limited,
-            _ => Connectivity::None,
-        }
-    }
+/// Represents an active connection.
+/// In iwd this is called "known network".
+///
+/// There can be multiple active connections if multiple network devices (wired, wireless cards)
+/// are present.
+pub struct ActiveConnection {
+    /// The dbus path to the underlying connection. In iwd this is called "network".
+    pub connection_path: dbus::Path<'static>,
+    /// The dbus path to the active connection. In iwd this is called "known network".
+    pub active_connection_path: dbus::Path<'static>,
+    pub state: ConnectionState,
 }
 
 impl From<u32> for ConnectionState {
@@ -109,8 +118,13 @@ impl From<u32> for ConnectionState {
     }
 }
 
+/// The encryption used on a given WiFi connection or a requested encryption
+/// for a new connection. Nowadays it can be expected that every WiFi adapter
+/// is capable of WPA2 and WPA Enterprise.
 pub enum Security {
+    /// An open network
     NONE,
+    // Do not use WEP for new connections! Do not connect to an access point using WEP!
     WEP,
     WPA,
     WPA2,
@@ -138,7 +152,7 @@ impl TryFrom<String> for Security {
             "wpa2" => Ok(Security::WPA2),
             "wep" => Ok(Security::WEP),
             "open" | "" => Ok(Security::NONE),
-            _ => Err(CaptivePortalError::GenericO(format!(
+            _ => Err(CaptivePortalError::Generic(format!(
                 "Expected an encryption mode. Got: {}",
                 &mode
             ))),
@@ -146,36 +160,28 @@ impl TryFrom<String> for Security {
     }
 }
 
-/// Represents an active connection.
-/// In iwd this is called "known network".
-///
-/// There can be multiple active connections if multiple network devices (wired, wireless cards)
-/// are present.
-pub struct ActiveConnection {
-    /// The dbus path to the underlying connection. In iwd this is called "network".
-    pub connection_path: dbus::Path<'static>,
-    /// The dbus path to the active connection. In iwd this is called "known network".
-    pub active_connection_path: dbus::Path<'static>,
-    pub state: ConnectionState,
+/// Different encryption mechanisms require different sets of credentials.
+#[derive(Debug, Clone)]
+pub enum AccessPointCredentials {
+    None,
+    Wep { passphrase: String },
+    Wpa { passphrase: String },
+    Enterprise { identity: String, passphrase: String },
 }
 
-// Converts a set of credentials into the [`AccessPointCredentials`] type.
+/// Converts a set of credentials into the [`AccessPointCredentials`] type.
 pub fn credentials_from_data(
-    passphrase: Option<String>,
+    passphrase: String,
     identity: Option<String>,
     mode: Security,
 ) -> Result<AccessPointCredentials, CaptivePortalError> {
     match mode {
         Security::ENTERPRISE => Ok(AccessPointCredentials::Enterprise {
-            identity: identity.ok_or(CaptivePortalError::no_shared_key())?,
-            passphrase: passphrase.ok_or(CaptivePortalError::no_shared_key())?,
+            identity: identity.ok_or(CaptivePortalError::NoSharedKeyProvided)?,
+            passphrase,
         }),
-        Security::WPA | Security::WPA2 => Ok(AccessPointCredentials::Wpa {
-            passphrase: passphrase.ok_or(CaptivePortalError::no_shared_key())?,
-        }),
-        Security::WEP => Ok(AccessPointCredentials::Wep {
-            passphrase: passphrase.ok_or(CaptivePortalError::no_shared_key())?,
-        }),
+        Security::WPA | Security::WPA2 => Ok(AccessPointCredentials::Wpa { passphrase }),
+        Security::WEP => Ok(AccessPointCredentials::Wep { passphrase }),
         Security::NONE => Ok(AccessPointCredentials::None),
     }
 }

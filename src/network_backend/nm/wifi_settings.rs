@@ -81,7 +81,7 @@ Network manager example output:
 */
 pub(crate) fn make_arguments_for_sta(
     ssid: SSID,
-    password: Option<String>,
+    password: String,
     address: Option<Ipv4Addr>,
     interface: &str,
     uuid: &str,
@@ -93,12 +93,13 @@ pub(crate) fn make_arguments_for_sta(
     add_str(&mut wireless, "band", "bg");
     add_val(&mut wireless, "hidden", false);
     add_str(&mut wireless, "mode", "ap");
-    if let Some(password) = password {
+    if password.len() > 0 {
+        verify_password(&password)?;
         add_str(&mut wireless, "security", "802-11-wireless-security");
 
         let mut security: VariantMap = HashMap::new();
         add_str(&mut security, "key-mgmt", "wpa-psk");
-        add_str(&mut security, "psk", &verify_password(password)?);
+        add_str(&mut security, "psk", &password);
 
         settings.insert("802-11-wireless-security", security);
     }
@@ -172,18 +173,20 @@ pub(crate) fn prepare_wifi_security_settings<T: Eq + std::hash::Hash + std::conv
 ) -> Result<(), CaptivePortalError> {
     match *credentials {
         AccessPointCredentials::Wep { ref passphrase } => {
+            verify_password(&passphrase)?;
             let mut security_settings: VariantMap = HashMap::new();
 
             add_val(&mut security_settings, "wep-key-type", NM_WEP_KEY_TYPE_PASSPHRASE);
-            add_val(&mut security_settings, "wep-key0", verify_password(passphrase.clone())?);
+            add_val(&mut security_settings, "wep-key0", passphrase.clone());
 
             settings.insert("802-11-wireless-security".into(), security_settings);
         },
         AccessPointCredentials::Wpa { ref passphrase } => {
+            verify_password(&passphrase)?;
             let mut security_settings: VariantMap = HashMap::new();
 
             add_str(&mut security_settings, "key-mgmt", "wpa-psk");
-            add_val(&mut security_settings, "psk", verify_password(passphrase.clone())?);
+            add_val(&mut security_settings, "psk", passphrase.clone());
 
             settings.insert("802-11-wireless-security".into(), security_settings);
         },
@@ -191,6 +194,7 @@ pub(crate) fn prepare_wifi_security_settings<T: Eq + std::hash::Hash + std::conv
             ref identity,
             ref passphrase,
         } => {
+            verify_password(&passphrase)?;
             let mut security_settings: VariantMap = HashMap::new();
 
             add_str(&mut security_settings, "key-mgmt", "wpa-eap");

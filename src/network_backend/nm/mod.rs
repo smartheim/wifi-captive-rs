@@ -28,7 +28,8 @@ use generated::*;
 use wifi_settings::{VariantMap, VariantMapNested};
 
 // Public API: AccessPointsChangedStream
-pub use access_points_changed::AccessPointsChangedStream;
+pub use access_points_changed::{ap_changed_stream, AccessPointChanged};
+use futures_util::StreamExt;
 use std::time::Duration;
 
 pub const NM_BUSNAME: &str = "org.freedesktop.NetworkManager";
@@ -108,19 +109,28 @@ impl NetworkBackend {
 
     /// Scan for access points if the last scan is older than 10 seconds
     pub async fn scan_networks(&self) -> Result<(), CaptivePortalError> {
+        use generated::device::DeviceWireless;
         let p = nonblock::Proxy::new(NM_BUSNAME, self.wifi_device_path.clone(), self.conn.clone());
-        use chrono::{DateTime, Duration, NaiveDateTime, Utc};
-        use device::DeviceWireless;
-        let scan_time = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(p.last_scan().await?, 0), Utc);
-        if (Utc::now() - scan_time) > Duration::seconds(10) {
-            // request_scan requires a hashmap of dbus::arg::RefArg parameters as argument.
-            // Those are not thread safe, eg implement Send, so cannot be wrapped as intermediate state in the
-            // async state machine. A function scope helps out here.
-            fn scan_networks(p: dbus::nonblock::Proxy<Arc<SyncConnection>>) -> dbus::nonblock::MethodReply<()> {
-                p.request_scan(HashMap::new())
-            }
-            scan_networks(p).await?;
+
+        // request_scan requires a hashmap of dbus::arg::RefArg parameters as argument.
+        // Those are not thread safe, eg implement Send, so cannot be wrapped as intermediate state in the
+        // async state machine. A function scope helps out here.
+        fn scan_networks(p: dbus::nonblock::Proxy<Arc<SyncConnection>>) -> dbus::nonblock::MethodReply<()> {
+            p.request_scan(HashMap::new())
         }
+
+        // There is one error that we can expect by calling this method:
+        // org.freedesktop.NetworkManager.Device.NotAllowed - Scanning not allowed while already scanning
+        if let Err(e) = scan_networks(p).await {
+            if let Some(name) = e.name() {
+                // All good
+                if name == "org.freedesktop.NetworkManager.Device.NotAllowed" {
+                    return Ok(());
+                }
+            }
+            return Err(e.into());
+        }
+
         Ok(())
     }
 
@@ -139,7 +149,7 @@ impl NetworkBackend {
     pub async fn state(&self) -> Result<NetworkManagerState, CaptivePortalError> {
         let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
         use networkmanager::NetworkManager;
-        Ok(p.state().await?.into())
+        Ok(NetworkManagerState::from(p.state().await?))
     }
 
     /// Let network manager try to auto-connect.
@@ -149,16 +159,16 @@ impl NetworkBackend {
         use connections::Settings;
         let p = nonblock::Proxy::new(NM_BUSNAME, NM_SETTINGS_PATH, self.conn.clone());
 
-        info!(
+        debug!(
             "Trying to connect to one of {} known connections ...",
             p.connections().await?.len()
         );
 
-        let state = self
-            .wait_until_state(NetworkManagerState::Connected, Some(timeout), false)
-            .await?;
-
-        Ok(state == NetworkManagerState::Connected)
+        match self.wait_for_connectivity(false, timeout).await {
+            Ok(state) => Ok(state == NetworkManagerState::Connected || state == NetworkManagerState::ConnectedLimited),
+            Err(CaptivePortalError::NotRequiredConnectivity(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     /// Connect to the given SSID with the given credentials.
@@ -228,28 +238,27 @@ impl NetworkBackend {
             .wait_for_active_connection_state(
                 ConnectionState::Deactivated,
                 active_connection.clone(),
-                Duration::from_secs(5),
+                Duration::from_secs(10),
                 true,
             )
             .await?;
-        dbg!(state);
-
-        {
-            use device::Device;
-            let p = nonblock::Proxy::new(NM_BUSNAME, self.wifi_device_path.clone(), self.conn.clone());
-            dbg!(device_state_type::DeviceState::from(p.state().await?));
+        // Not successful
+        if state == ConnectionState::Deactivated {
+            use connection_nm::Connection;
+            let p = nonblock::Proxy::new(NM_BUSNAME, connection_path, self.conn.clone());
+            p.delete().await?;
+            return Ok(None);
         }
 
         // Wait up to 30 seconds while in Activating
         let state = self
             .wait_for_active_connection_state(
-                ConnectionState::Activating,
+                ConnectionState::Activated,
                 active_connection.clone(),
                 Duration::from_secs(30),
-                true,
+                false,
             )
             .await?;
-        dbg!(state);
 
         // Remove connection if not successful. Store it permanently if successful
         if state == ConnectionState::Activated {
@@ -294,7 +303,9 @@ impl NetworkBackend {
             strength: access_point_data.strength().await?,
             frequency: access_point_data.frequency().await?,
         };
-        info!("ap {:?}", &wifi_connection);
+        if !wifi_connection.is_own {
+            info!("Found AP {:?}", &wifi_connection.ssid);
+        }
         Ok(wifi_connection)
     }
 
@@ -302,26 +313,43 @@ impl NetworkBackend {
     /// The list might not be up to date and can be refreshed with a call to [`scan_networks`].
     ///
     /// ## Arguments
-    /// * find_all: Perform a full scan. This may take up to a minute.
-    pub async fn list_access_points(&self, find_all: bool) -> Result<Vec<WifiConnection>, CaptivePortalError> {
+    /// * timeout: If timeout is != 0, performs a full scan. Waits up to timeout for at least one result.
+    pub async fn list_access_points(
+        &self,
+        mut timeout: std::time::Duration,
+    ) -> Result<Vec<WifiConnection>, CaptivePortalError> {
         let p = nonblock::Proxy::new(NM_BUSNAME, self.wifi_device_path.clone(), self.conn.clone());
 
-        let access_point_paths = {
+        let connections = {
             use device::DeviceWireless;
-            if find_all {
-                p.get_all_access_points().await?
-            } else {
-                p.get_access_points().await?
+            if timeout.as_secs() > 0 {
+                self.scan_networks().await?;
+            }
+            let interval = Duration::from_millis(500);
+            loop {
+                // Get access point list
+                let stream = futures_util::stream::iter(p.get_access_points().await?.into_iter());
+                let access_point_paths: Vec<WifiConnection> = stream
+                    .filter_map(|ap_path| {
+                        async {
+                            self.access_point(ap_path).await.ok().and_then(|ap| match ap.is_own {
+                                true => None,
+                                false => Some(ap),
+                            })
+                        }
+                    })
+                    .collect()
+                    .await;
+                if access_point_paths.len() > 0 {
+                    break access_point_paths;
+                }
+                if timeout.as_millis() <= 0 {
+                    break access_point_paths;
+                }
+                tokio::timer::delay_for(interval).await;
+                timeout -= interval;
             }
         };
-
-        let mut connections = Vec::with_capacity(access_point_paths.len());
-        for ap_path in access_point_paths {
-            let ap = self.access_point(ap_path).await?;
-            if !ap.is_own {
-                connections.push(ap);
-            }
-        }
 
         Ok(connections)
     }

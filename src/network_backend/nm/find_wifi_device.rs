@@ -81,5 +81,5 @@ pub(crate) async fn find_wifi_device(
         }
     }
 
-    Err(CaptivePortalError::no_wifi_device())
+    Err(CaptivePortalError::NoWifiDeviceFound)
 }

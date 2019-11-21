@@ -21,11 +21,9 @@ pub enum MessageType {
 }
 
 mod signalargs;
-
 pub use self::signalargs::SignalArgs;
 
 mod matchrule;
-
 pub use self::matchrule::MatchRule;
 
 
@@ -40,13 +38,14 @@ unsafe impl Send for Message {}
 impl Message {
     /// Creates a new method call message.
     pub fn new_method_call<'d, 'p, 'i, 'm, D, P, I, M>(destination: D, path: P, iface: I, method: M) -> Result<Message, String>
-        where D: Into<BusName<'d>>, P: Into<Path<'p>>, I: Into<Interface<'i>>, M: Into<Member<'m>> {
+    where D: Into<BusName<'d>>, P: Into<Path<'p>>, I: Into<Interface<'i>>, M: Into<Member<'m>> {
         init_dbus();
         let (d, p, i, m) = (destination.into(), path.into(), iface.into(), method.into());
         let ptr = unsafe {
             ffi::dbus_message_new_method_call(d.as_ref().as_ptr(), p.as_ref().as_ptr(), i.as_ref().as_ptr(), m.as_ref().as_ptr())
         };
-        if ptr.is_null() { Err("D-Bus error: dbus_message_new_method_call failed".into()) } else { Ok(Message { msg: ptr }) }
+        if ptr.is_null() { Err("D-Bus error: dbus_message_new_method_call failed".into()) }
+        else { Ok(Message { msg: ptr}) }
     }
 
     /// Creates a new method call message.
@@ -54,15 +53,15 @@ impl Message {
         init_dbus();
         let ptr = unsafe {
             ffi::dbus_message_new_method_call(destination.as_ref().as_ptr(), path.as_ref().as_ptr(),
-                                              iface.as_ref().as_ptr(), name.as_ref().as_ptr())
+                iface.as_ref().as_ptr(), name.as_ref().as_ptr())
         };
         if ptr.is_null() { panic!("D-Bus error: dbus_message_new_method_call failed") }
-        Message { msg: ptr }
+        Message { msg: ptr}
     }
 
     /// Creates a new method call message.
     pub fn call_with_args<'d, 'p, 'i, 'm, A, D, P, I, M>(destination: D, path: P, iface: I, method: M, args: A) -> Message
-        where D: Into<BusName<'d>>, P: Into<Path<'p>>, I: Into<Interface<'i>>, M: Into<Member<'m>>, A: AppendAll {
+    where D: Into<BusName<'d>>, P: Into<Path<'p>>, I: Into<Interface<'i>>, M: Into<Member<'m>>, A: AppendAll {
         let mut msg = Message::method_call(&destination.into(), &path.into(), &iface.into(), &method.into());
         args.append(&mut IterAppend::new(&mut msg));
         msg
@@ -71,7 +70,7 @@ impl Message {
 
     /// Creates a new signal message.
     pub fn new_signal<P, I, M>(path: P, iface: I, name: M) -> Result<Message, String>
-        where P: Into<Vec<u8>>, I: Into<Vec<u8>>, M: Into<Vec<u8>> {
+    where P: Into<Vec<u8>>, I: Into<Vec<u8>>, M: Into<Vec<u8>> {
         init_dbus();
 
         let p = Path::new(path)?;
@@ -81,7 +80,8 @@ impl Message {
         let ptr = unsafe {
             ffi::dbus_message_new_signal(p.as_ref().as_ptr(), i.as_ref().as_ptr(), m.as_ref().as_ptr())
         };
-        if ptr.is_null() { Err("D-Bus error: dbus_message_new_signal failed".into()) } else { Ok(Message { msg: ptr }) }
+        if ptr.is_null() { Err("D-Bus error: dbus_message_new_signal failed".into()) }
+        else { Ok(Message { msg: ptr}) }
     }
 
     /// Creates a new signal message.
@@ -91,20 +91,20 @@ impl Message {
             ffi::dbus_message_new_signal(path.as_ref().as_ptr(), iface.as_ref().as_ptr(), name.as_ref().as_ptr())
         };
         if ptr.is_null() { panic!("D-Bus error: dbus_message_new_signal failed") }
-        Message { msg: ptr }
+        Message { msg: ptr}
     }
 
     /// Creates a method reply for this method call.
     pub fn new_method_return(m: &Message) -> Option<Message> {
         let ptr = unsafe { ffi::dbus_message_new_method_return(m.msg) };
-        if ptr.is_null() { None } else { Some(Message { msg: ptr }) }
+        if ptr.is_null() { None } else { Some(Message { msg: ptr} ) }
     }
 
     /// Creates a method return (reply) for this method call.
     pub fn method_return(&self) -> Message {
         let ptr = unsafe { ffi::dbus_message_new_method_return(self.msg) };
         if ptr.is_null() { panic!("D-Bus error: dbus_message_new_method_return failed") }
-        Message { msg: ptr }
+        Message {msg: ptr}
     }
 
     /// The old way to create a new error reply
@@ -112,14 +112,14 @@ impl Message {
     pub fn new_error(m: &Message, error_name: &str, error_message: &str) -> Option<Message> {
         let (en, em) = (to_c_str(error_name), to_c_str(error_message));
         let ptr = unsafe { ffi::dbus_message_new_error(m.msg, en.as_ptr(), em.as_ptr()) };
-        if ptr.is_null() { None } else { Some(Message { msg: ptr }) }
+        if ptr.is_null() { None } else { Some(Message { msg: ptr} ) }
     }
 
     /// Creates a new error reply
     pub fn error(&self, error_name: &ErrorName, error_message: &CStr) -> Message {
         let ptr = unsafe { ffi::dbus_message_new_error(self.msg, error_name.as_ref().as_ptr(), error_message.as_ptr()) };
         if ptr.is_null() { panic!("D-Bus error: dbus_message_new_error failed") }
-        Message { msg: ptr }
+        Message { msg: ptr}
     }
 
     /// Get the MessageItems that make up the message.
@@ -129,10 +129,7 @@ impl Message {
     pub fn get_items(&self) -> Vec<crate::arg::messageitem::MessageItem> {
         let mut i = self.iter_init();
         let mut v = vec!();
-        while let Some(z) = crate::arg::messageitem::MessageItem::get(&mut i) {
-            v.push(z);
-            i.next();
-        }
+        while let Some(z) = crate::arg::messageitem::MessageItem::get(&mut i) { v.push(z); i.next(); }
         v
     }
 
@@ -192,8 +189,7 @@ impl Message {
     pub fn append2<A1: Append, A2: Append>(mut self, a1: A1, a2: A2) -> Self {
         {
             let mut m = IterAppend::new(&mut self);
-            m.append(a1);
-            m.append(a2);
+            m.append(a1); m.append(a2);
         }
         self
     }
@@ -203,9 +199,7 @@ impl Message {
     pub fn append3<A1: Append, A2: Append, A3: Append>(mut self, a1: A1, a2: A2, a3: A3) -> Self {
         {
             let mut m = IterAppend::new(&mut self);
-            m.append(a1);
-            m.append(a2);
-            m.append(a3);
+            m.append(a1); m.append(a2); m.append(a3);
         }
         self
     }
@@ -243,9 +237,9 @@ impl Message {
     pub fn get3<'a, G1: Get<'a>, G2: Get<'a>, G3: Get<'a>>(&'a self) -> (Option<G1>, Option<G2>, Option<G3>) {
         let mut i = Iter::new(&self);
         let g1 = i.get();
-        if !i.next() { return (g1, None, None); }
+        if !i.next() { return (g1, None, None) }
         let g2 = i.get();
-        if !i.next() { return (g1, g2, None); }
+        if !i.next() { return (g1, g2, None) }
         (g1, g2, i.get())
     }
 
@@ -254,11 +248,11 @@ impl Message {
     pub fn get4<'a, G1: Get<'a>, G2: Get<'a>, G3: Get<'a>, G4: Get<'a>>(&'a self) -> (Option<G1>, Option<G2>, Option<G3>, Option<G4>) {
         let mut i = Iter::new(&self);
         let g1 = i.get();
-        if !i.next() { return (g1, None, None, None); }
+        if !i.next() { return (g1, None, None, None) }
         let g2 = i.get();
-        if !i.next() { return (g1, g2, None, None); }
+        if !i.next() { return (g1, g2, None, None) }
         let g3 = i.get();
-        if !i.next() { return (g1, g2, g3, None); }
+        if !i.next() { return (g1, g2, g3, None) }
         (g1, g2, g3, i.get())
     }
 
@@ -268,13 +262,13 @@ impl Message {
     pub fn get5<'a, G1: Get<'a>, G2: Get<'a>, G3: Get<'a>, G4: Get<'a>, G5: Get<'a>>(&'a self) -> (Option<G1>, Option<G2>, Option<G3>, Option<G4>, Option<G5>) {
         let mut i = Iter::new(&self);
         let g1 = i.get();
-        if !i.next() { return (g1, None, None, None, None); }
+        if !i.next() { return (g1, None, None, None, None) }
         let g2 = i.get();
-        if !i.next() { return (g1, g2, None, None, None); }
+        if !i.next() { return (g1, g2, None, None, None) }
         let g3 = i.get();
-        if !i.next() { return (g1, g2, g3, None, None); }
+        if !i.next() { return (g1, g2, g3, None, None) }
         let g4 = i.get();
-        if !i.next() { return (g1, g2, g3, g4, None); }
+        if !i.next() { return (g1, g2, g3, g4, None) }
         (g1, g2, g3, g4, i.get())
     }
 
@@ -298,7 +292,7 @@ impl Message {
     ///
     /// Returns a TypeMismatchError if there are not enough arguments, or if types don't match.
     pub fn read3<'a, G1: Arg + Get<'a>, G2: Arg + Get<'a>, G3: Arg + Get<'a>>(&'a self) ->
-    Result<(G1, G2, G3), TypeMismatchError> {
+        Result<(G1, G2, G3), TypeMismatchError> {
         let mut i = Iter::new(&self);
         Ok((i.read()?, i.read()?, i.read()?))
     }
@@ -307,7 +301,7 @@ impl Message {
     ///
     /// Returns a TypeMismatchError if there are not enough arguments, or if types don't match.
     pub fn read4<'a, G1: Arg + Get<'a>, G2: Arg + Get<'a>, G3: Arg + Get<'a>, G4: Arg + Get<'a>>(&'a self) ->
-    Result<(G1, G2, G3, G4), TypeMismatchError> {
+        Result<(G1, G2, G3, G4), TypeMismatchError> {
         let mut i = Iter::new(&self);
         Ok((i.read()?, i.read()?, i.read()?, i.read()?))
     }
@@ -317,7 +311,7 @@ impl Message {
     /// Returns a TypeMismatchError if there are not enough arguments, or if types don't match.
     /// Note: If you need more than five arguments, use `iter_init` instead.
     pub fn read5<'a, G1: Arg + Get<'a>, G2: Arg + Get<'a>, G3: Arg + Get<'a>, G4: Arg + Get<'a>, G5: Arg + Get<'a>>(&'a self) ->
-    Result<(G1, G2, G3, G4, G5), TypeMismatchError> {
+        Result<(G1, G2, G3, G4, G5), TypeMismatchError> {
         let mut i = Iter::new(&self);
         Ok((i.read()?, i.read()?, i.read()?, i.read()?, i.read()?))
     }
@@ -345,7 +339,8 @@ impl Message {
     }
 
     fn msg_internal_str<'a>(&'a self, c: *const libc::c_char) -> Option<&'a [u8]> {
-        if c.is_null() { None } else { Some(unsafe { CStr::from_ptr(c) }.to_bytes_with_nul()) }
+        if c.is_null() { None }
+        else { Some( unsafe { CStr::from_ptr(c) }.to_bytes_with_nul()) }
     }
 
     /// Gets the name of the connection that originated this message.
@@ -406,26 +401,21 @@ impl Message {
         self.set_error_from_msg().map(|_| self)
     }
 
-    pub(crate) fn set_error_from_msg(&self) -> Result<(), Error> {
+    pub (crate) fn set_error_from_msg(&self) -> Result<(), Error> {
         let mut e = Error::empty();
-        if unsafe { ffi::dbus_set_error_from_message(e.get_mut(), self.msg) } != 0 { Err(e) } else { Ok(()) }
+        if unsafe { ffi::dbus_set_error_from_message(e.get_mut(), self.msg) } != 0 { Err(e) }
+        else { Ok(()) }
     }
 
-    pub(crate) fn ptr(&self) -> *mut ffi::DBusMessage { self.msg }
+    pub (crate) fn ptr(&self) -> *mut ffi::DBusMessage { self.msg }
 
-    pub(crate) fn from_ptr(ptr: *mut ffi::DBusMessage, add_ref: bool) -> Message {
+    pub (crate) fn from_ptr(ptr: *mut ffi::DBusMessage, add_ref: bool) -> Message {
         if add_ref {
             unsafe { ffi::dbus_message_ref(ptr) };
         }
         Message { msg: ptr }
     }
-}
 
-impl Clone for Message {
-    fn clone(&self) -> Self {
-        let msg = unsafe { ffi::dbus_message_ref(self.msg) };
-        Message { msg }
-    }
 }
 
 impl Drop for Message {
@@ -462,13 +452,13 @@ impl fmt::Debug for Message {
 
 // For purpose of testing the library only.
 #[cfg(test)]
-pub(crate) fn message_set_serial(m: &mut Message, s: u32) {
+pub (crate) fn message_set_serial(m: &mut Message, s: u32) {
     unsafe { ffi::dbus_message_set_serial(m.msg, s) };
 }
 
 #[cfg(test)]
 mod test {
-    use crate::Message;
+    use crate::{Message};
     use crate::strings::BusName;
 
     #[test]

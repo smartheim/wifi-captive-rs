@@ -1,3 +1,4 @@
+//! # Utility methods and types
 use super::CaptivePortalError;
 
 use futures_core::stream::Stream;
@@ -17,19 +18,19 @@ use tokio::timer::Delay;
 use tokio_net::signal::CtrlC;
 
 /// A wifi password must be between 8 and 32 characters
-pub(crate) fn verify_password(password: String) -> Result<String, CaptivePortalError> {
+pub fn verify_password(password: &str) -> Result<(), CaptivePortalError> {
     if password.len() < 8 {
-        Err(CaptivePortalError::invalid_shared_key(format!(
+        Err(CaptivePortalError::InvalidSharedKey(format!(
             "Password length should be at least 8 characters: {} len",
             password.len()
         )))
     } else if password.len() > 32 {
-        Err(CaptivePortalError::invalid_shared_key(format!(
+        Err(CaptivePortalError::InvalidSharedKey(format!(
             "Password length should not exceed 64: {} len",
             password.len()
         )))
     } else {
-        Ok(password)
+        Ok(())
     }
 }
 
@@ -45,21 +46,6 @@ where
     let field = unsafe { subject.as_mut().map_unchecked_mut(fun) };
     // Remove future out of optional
     let _ = field.get_mut().take();
-}
-use crate::dbus_tokio::SignalStream;
-use dbus::message::SignalArgs;
-use dbus::nonblock::stdintf::org_freedesktop_dbus::PropertiesPropertiesChanged;
-use dbus::nonblock::SyncConnection;
-use std::sync::Arc;
-
-pub async fn prop_stream(
-    wifi_device_path: &dbus::Path<'_>,
-    conn: Arc<SyncConnection>,
-) -> Result<SignalStream<PropertiesPropertiesChanged, PropertiesPropertiesChanged>, CaptivePortalError> {
-    let rule = PropertiesPropertiesChanged::match_rule(None, Some(wifi_device_path)).static_clone();
-    let stream: SignalStream<PropertiesPropertiesChanged, PropertiesPropertiesChanged> =
-        SignalStream::new(conn, rule, Box::new(|v| v)).await?;
-    Ok(stream)
 }
 
 /// Receives the next packet on a udp socket. The future resolves if either a packet got received,
@@ -86,7 +72,7 @@ pub async fn receive_or_exit(
             }
         },
         Err(e) => match e {
-            Either::Left((e, _)) => Err(CaptivePortalError::IO(e)),
+            Either::Left((e, _)) => Err(CaptivePortalError::IO(e, "Failed to receive")),
             // Server exit handler dropped
             Either::Right((_, _)) => Ok(None),
         },
@@ -106,7 +92,7 @@ where
                 v.next().await;
                 Ok(())
             },
-            Err(_) => Err(CaptivePortalError::Generic("signal::ctrl_c() failed")),
+            Err(e) => Err(CaptivePortalError::IO(e, "signal::ctrl_c() failed")),
         }
     };
     pin_utils::pin_mut!(ctrl_c);

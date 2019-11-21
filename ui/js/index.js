@@ -129,12 +129,13 @@ async function connection_reestablished() {
 
 function connection_lost(error) {
     console.warn("SSE error", error);
-    let no_conn = document.getElementById("no_connection");
-    if (no_conn) return;
 
     while (selectBox.hasChildNodes()) {
         selectBox.removeChild(selectBox.lastChild);
     }
+
+    let no_conn = document.getElementById("no_connection");
+    if (no_conn) return;
 
     no_conn = document.createElement("div");
     no_conn.id = "no_connection";
@@ -162,6 +163,7 @@ async function get_networks() {
     }
 
     document.querySelector('#choose_wifi').classList.remove('hide');
+    document.querySelector('#applying').classList.add('hide');
     refresh_button.disabled = false;
     refresh_text.innerText = "Automatic refresh enabled";
 

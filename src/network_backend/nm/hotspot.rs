@@ -21,10 +21,11 @@ impl NetworkBackend {
         use super::generated::connections::Settings;
         match p.get_connection_by_uuid(HOTSPOT_UUID).await {
             Ok(connection_path) => {
-                info!("Deleting old hotspot configuration {}", connection_path);
+                info!("Deleting old hotspot configuration {}", &connection_path);
                 let p = nonblock::Proxy::new(NM_BUSNAME, connection_path, self.conn.clone());
                 use super::generated::connection_nm::Connection;
-                p.delete().await?;
+                // Don't make this a hard error
+                let _ = p.delete().await;
             },
             Err(_) => {},
         }
@@ -39,7 +40,6 @@ impl NetworkBackend {
         let p = nonblock::Proxy::new(NM_BUSNAME, NM_PATH, self.conn.clone());
 
         let connections = p.active_connections().await?;
-        info!("Scan {} connections for hotspot connections ...", connections.len());
 
         for connection_path in connections {
             let settings = wifi_settings::get_connection_settings(self.conn.clone(), connection_path.clone()).await;
@@ -64,12 +64,12 @@ impl NetworkBackend {
     pub async fn hotspot_start(
         &self,
         ssid: SSID,
-        password: Option<String>,
+        password: String,
         address: Option<Ipv4Addr>,
     ) -> Result<ActiveConnection, CaptivePortalError> {
         self.hotspot_remove_existing().await?;
 
-        info!("Configuring hotspot ...");
+        debug!("Configuring hotspot ...");
         let connection_path = {
             // add connection
             let settings =
@@ -105,7 +105,7 @@ impl NetworkBackend {
             let p = nonblock::Proxy::new(NM_BUSNAME, active_connection.clone(), self.conn.clone());
             use super::generated::connection_active::ConnectionActive;
             let state: ConnectionState = p.state().await?.into();
-            info!("Wait for hotspot to settle ... {:?}", state);
+            debug!("Wait for hotspot to settle ... {:?}", state);
         }
 
         let state_after_wait = self
@@ -118,8 +118,8 @@ impl NetworkBackend {
             .await?;
 
         if state_after_wait != ConnectionState::Activated {
-            info!("Hotspot starting failed with state {:?}", state_after_wait);
-            return Err(CaptivePortalError::hotspot_failed());
+            warn!("Hotspot starting failed with state {:?}", state_after_wait);
+            return Err(CaptivePortalError::HotspotFailed);
         }
 
         {
@@ -147,10 +147,9 @@ impl NetworkBackend {
         use super::connection_active::ConnectionActiveStateChanged as StateChanged;
 
         let rule = StateChanged::match_rule(None, Some(&path)).static_clone();
-        let mut stream: SignalStream<StateChanged, u32> =
-            SignalStream::new(self.conn.clone(), rule, Box::new(|v: StateChanged| v.state)).await?;
+        let mut stream: SignalStream<StateChanged> = SignalStream::new(self.conn.clone(), rule).await?;
         for (state, _path) in stream.next().await {
-            if ConnectionState::from(state) != ConnectionState::Activated {
+            if ConnectionState::from(state.state) != ConnectionState::Activated {
                 return Ok(());
             }
         }

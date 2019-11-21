@@ -12,17 +12,19 @@
 //! before starting this service. Eg: `ip addr add 192.168.41/24 dev wlan0`
 mod generated;
 
-mod access_points_changed;
+//mod access_points_changed;
 mod connectivity;
 mod credentials_agent;
 mod find_wifi_device;
 
 use crate::{
-    dbus_tokio, prop_stream, AccessPointCredentials, ActiveConnection, CaptivePortalError, ConnectionState,
-    Connectivity, NetworkManagerState, WifiConnection, SSID,
+    dbus_tokio, AccessPointCredentials, ActiveConnection, CaptivePortalError, ConnectionState, Connectivity,
+    NetworkManagerState, WifiConnection, SSID,
 };
 pub use access_points_changed::AccessPointsChangedStream;
 
+use crate::dbus_tokio::SignalStream;
+use crate::network_backend::NM_PATH;
 use dbus::arg::RefArg;
 use dbus::nonblock::SyncConnection;
 use dbus::{nonblock, Path};
@@ -39,7 +41,7 @@ pub struct NetworkBackend {
     exit_handler: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
     pub(crate) conn: Arc<SyncConnection>,
     /// The wifi device. Will always be set, because the service quits if it didn't find a wifi device.
-    wifi_device_path: dbus::Path<'static>,
+    pub(crate) wifi_device_path: dbus::Path<'static>,
     /// Mac address of the own network interface
     hw: String,
     /// Network interface name
@@ -54,7 +56,7 @@ impl NetworkBackend {
         let (exit_handler, exit_receiver) = tokio::sync::oneshot::channel::<()>();
 
         // Connect to the D-Bus session bus (this is blocking, unfortunately).
-        let (resource, conn) = dbus_tokio::new_system_sync()?;
+        let (resource, conn) = signal_stream::new_system_sync()?;
 
         // The resource is a task that should be spawned onto a tokio compatible
         // reactor ASAP. If the resource ever finishes, you lost connection to D-Bus.
@@ -135,13 +137,13 @@ impl NetworkBackend {
             if let Some(entry) = entry.get("net.connman.iwd.KnownNetwork") {
                 let auto_connect = entry
                     .get("Autoconnect")
-                    .ok_or(CaptivePortalError::Generic(
+                    .ok_or(CaptivePortalError::IwdError(
                         "net.connman.iwd.KnownNetwork: Autoconnect expected'",
                     ))?
                     .0
                     .as_any()
                     .downcast_ref::<bool>()
-                    .ok_or(CaptivePortalError::Generic(
+                    .ok_or(CaptivePortalError::IwdError(
                         "net.connman.iwd.KnownNetwork/Autoconnect: Expects a bool!",
                     ))?;
 
@@ -152,8 +154,12 @@ impl NetworkBackend {
             }
         }
 
-        let connectivity: Connectivity = self.wait_for_connectivity(false, timeout).await?;
-        Ok(connectivity == Connectivity::Full || connectivity == Connectivity::Limited)
+        match self.wait_for_connectivity(false, timeout).await {
+            Ok(state) => Ok(state == NetworkManagerState::Connected || state == NetworkManagerState::ConnectedLimited),
+            Err(CaptivePortalError::NotRequiredConnectivity(_)) => Ok(false),
+            Err(e) => Err(e),
+            _ => Ok(false),
+        }
     }
 
     /// Connect to the given SSID with the given credentials.
@@ -197,7 +203,10 @@ impl NetworkBackend {
     ///
     /// ## Arguments
     /// * find_all: Perform a full scan. This may take up to a minute.
-    pub async fn list_access_points(&self, find_all: bool) -> Result<Vec<WifiConnection>, CaptivePortalError> {
+    pub async fn list_access_points(
+        &self,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<Vec<WifiConnection>, CaptivePortalError> {
         if find_all {
             self.scan_networks().await?;
         }
@@ -220,7 +229,7 @@ impl NetworkBackend {
     pub async fn hotspot_start(
         &self,
         ssid: SSID,
-        password: Option<String>,
+        password: String,
         address: Option<Ipv4Addr>,
     ) -> Result<ActiveConnection, CaptivePortalError> {
         use generated::device::NetConnmanIwdAccessPoint;
@@ -231,10 +240,10 @@ impl NetworkBackend {
         }
 
         info!("Configuring hotspot ...");
-        p.start(&ssid, &password.unwrap_or_default()).await?;
+        p.start(&ssid, &password).await?;
 
         // Wait for connected state
-        let stream = prop_stream(&self.wifi_device_path, self.conn.clone()).await?;
+        let stream = SignalStream::prop_new(NM_PATH.to_owned().into(), self.conn.clone()).await?;
 
         let mut stream = stream.timeout(Duration::from_secs(1));
         loop {

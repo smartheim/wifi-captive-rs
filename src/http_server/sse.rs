@@ -39,7 +39,7 @@ pub fn send_wifi_connection(
     let message = format!(
         "retry: 3000\nevent: {}\ndata: {}\n\n",
         message.event.to_string(),
-        serde_json::to_string(&message.connection)?
+        serde_json::to_string(&message.access_point)?
     );
     push_to_all_clients(clients, message);
     Ok(())
