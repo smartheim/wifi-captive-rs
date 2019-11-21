@@ -13,5 +13,7 @@ jobs:
       - uses: actions/checkout@master
       - name: Check for leftover println
         run: ./tests/left_over_println.sh
+      - name: Add rustfmt
+        run: rustup component add rustfmt
       - name: Check formatting
         run: cargo +nightly fmt --all -- --check
