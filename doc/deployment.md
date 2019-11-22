@@ -11,7 +11,7 @@ The default is to use the *NetworkManager* backend.
 
 If you build with `cargo build` the resulting binary will be
 build with the system default linker. This usually means that
-the binary is dynamically linked to the systems libc library.
+the binary is dynamically linked to the systems libc and dbus library.
 
 For truly static binaries for all architectures you may use
 the `scripts/build.sh` script instead. It downloads the musl gcc
@@ -41,6 +41,10 @@ Assuming that you have assigned the static IP *192.168.4.1* to your adapter:
 ```sh
 docker ... -p 192.168.4.1:53:53 -p 192.168.4.1:67:67 -p 192.168.4.1:80:80
 ```
+
+All ports below 1024 are system ports. This is also true for software container processes.
+You either need the SYS_NET Linux capability assigned to the container,
+or use the command line arguments to change the ports .
 
 An alternative is:
 

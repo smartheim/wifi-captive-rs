@@ -141,9 +141,9 @@ the command line option will take higher precedence.
     
 *   **-f, --passphrase_file** passphrase file, **PORTAL_PASSPHRASE_FILE**
 
-    WPA2 Passphrase of the captive portal WiFi network, given via file.
-    The file should contain the passphrase in plain text, utf8 encoded, in exactly one line.
-    Wifi-Captive will try to watch that file for changes.
+    The portal SSID and WPA2 Passphrase, given via file.
+    The file should contain at least one line with the passphrase in plain text, utf8 encoded.
+    If the file contains two lines, the second line is used for the portal ssid.
 
 *   **-s, --portal-ssid** ssid, **$PORTAL_SSID**
 

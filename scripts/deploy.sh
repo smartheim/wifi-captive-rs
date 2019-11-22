@@ -177,7 +177,7 @@ if [ -z "$GITHUB_TOKEN" ]; then
 fi
 
 make_release || err "Failed to create a Github release"
-targets=$(find target -mindepth 1 -maxdepth 1 -type d -not -name "debug" -and -not -name "release" -and -not -name "libdbus")
+targets=$(find target -mindepth 1 -maxdepth 1 -type d -not -name "debug" -and -not -name "release" -and -not -name "libdbus" -and -not -name "package")
 
 unset IFS
 for target in $targets; do

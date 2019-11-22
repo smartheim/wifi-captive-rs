@@ -23,8 +23,9 @@ pub struct Config {
     )]
     pub passphrase: String,
 
-    /// WPA2 Passphrase of the captive portal WiFi network given via a file.
-    /// The file should contain the passphrase in plain text, utf8 encoded, in exactly one line.
+    /// Ssid and WPA2 Passphrase of the captive portal WiFi network given via a file.
+    /// The file should contain at least one line with the passphrase in plain text, utf8 encoded.
+    /// If the file contains two lines, the second line is used for the portal ssid.
     #[structopt(
         parse(from_os_str),
         short = "f",
@@ -91,6 +92,25 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn new() -> Config {
+        Config {
+            interface: None,
+            ssid: "".to_string(),
+            passphrase: "".to_string(),
+            passphrase_file: None,
+            identity: None,
+            gateway: Ipv4Addr::new(0, 0, 0, 0),
+            listening_port: 0,
+            dns_port: 0,
+            dhcp_port: 0,
+            wait_before_reconfigure: 0,
+            retry_in: 0,
+            quit_after_connected: false,
+            internet_connectivity: false,
+            #[cfg(all(not(feature = "includeui"), debug_assertions))]
+            ui_directory: None,
+        }
+    }
     #[cfg(all(not(feature = "includeui"), debug_assertions))]
     pub fn get_ui_directory(&self) -> PathBuf {
         self.ui_directory.clone().unwrap_or("ui".into())

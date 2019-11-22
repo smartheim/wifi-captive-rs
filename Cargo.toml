@@ -11,6 +11,9 @@ categories = ["api-bindings", "network-programming", "os::unix-apis"]
 license = "Apache-2.0"
 edition = "2018"
 
+[workspace]
+members=["dbus-rs-2019-11-21"]
+
 [dependencies]
 # General
 serde = { version = "1.0.101", features = ["derive"] }
@@ -21,21 +24,22 @@ env_logger = "0.7.0"
 nix = "0.15.0"
 structopt = "0.3.2"
 
-# Async
+# Async: Update to futures > 0.3 as soon as tokio releases a stable
 #futures-core =  { version = "^0.3.0"}
 #futures-util =  { version = "^0.3.0"}
 #futures-channel =  { version = "^0.3.0"}
 futures-core =  { version = "^0.3.0-alpha.18", package = "futures-core-preview"}
 futures-util =  { version = "^0.3.0-alpha.18", package = "futures-util-preview"}
+futures-io =  { version = "^0.3.0-alpha.18", package = "futures-io-preview"}
 futures-channel =  { version = "^0.3.0-alpha.18", package = "futures-channel-preview"}
 tokio-net = {version="0.2.0-alpha.6",features = ["signal"]}
 tokio = { version = "0.2.0-alpha.6", features = ["sync","net","signal","timer"] }
 pin-utils = "0.1.0-alpha.4"
 
 # Network manager
-dbus = "^0"
+#dbus = "^0.8"
+dbus = { version="19.11.21", package = "dbus_copy", path="./dbus-rs-2019-11-21" }
 mio = "0.6.19" # for dbus_tokio.rs
-mio-uds = "0.6.7"
 enumflags2 = "0.6.2"
 
 # Web server
@@ -46,15 +50,12 @@ include_dir = {version="0.2.1",optional=true}
 [package.metadata.docs.rs]
 features = [ "external_doc", "rocket_support" ]
 
-[patch.crates-io]
-dbus = { path = './dbus-rs-2019-11-21' }
-#dbus = { git = 'https://github.com/diwic/dbus-rs' }
-
 [features]
 default = ["networkmanager","includeui"]
 includeui = ["include_dir"]
 networkmanager = []
 iwd = []
+connman = []
 
 [profile.release]
 lto = true
@@ -63,3 +64,6 @@ lto = true
 is-it-maintained-open-issues = { repository = "openhab-nodes/wifi-captive-rs" }
 is-it-maintained-issue-resolution = { repository = "openhab-nodes/wifi-captive-rs" }
 maintenance = { status = "actively-developed" }
+
+[dev-dependencies]
+tempfile = "3.1.0"

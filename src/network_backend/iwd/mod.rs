@@ -205,7 +205,7 @@ impl NetworkBackend {
     /// * find_all: Perform a full scan. This may take up to a minute.
     pub async fn list_access_points(
         &self,
-        timeout: Option<std::time::Duration>,
+        timeout: std::time::Duration,
     ) -> Result<Vec<WifiConnection>, CaptivePortalError> {
         if find_all {
             self.scan_networks().await?;
