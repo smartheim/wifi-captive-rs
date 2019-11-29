@@ -11,7 +11,7 @@
 readonly GITHUB_ID=$(git remote -v|cut -f2|cut -d':' -f2|cut -d' ' -f1|cut -d'.' -f1|head -n1)
 readonly RELEASE_API_URL="https://api.github.com/repos/$GITHUB_ID/releases"
 readonly UPLOAD_API_URL="https://uploads.github.com/repos/$GITHUB_ID/releases"
-readonly METADATA=$(cargo metadata --format-version 1 | jq -r '.workspace_members[0]')
+readonly METADATA=$(cargo metadata --format-version 1 | jq -r '.workspace_members[]' | tail -n1)
 readonly PACKAGE_NAME=$(echo $METADATA | cut -d' ' -f1)
 readonly PACKAGE_VERSION=$(echo $METADATA | cut -d' ' -f2)
 
@@ -198,10 +198,18 @@ fi
 
 if command -v $docker > /dev/null 2>&1; then
     unset IFS
+    basetag="docker.pkg.github.com/$GITHUB_ID/${PACKAGE_NAME}:${PACKAGE_VERSION}"
+    additional_tags=""
     for target in $targets; do
         arch=$(echo $target|cut -d'/' -f2|cut -d'-' -f1)
-        tag="docker.pkg.github.com/$GITHUB_ID/${PACKAGE_NAME}:${PACKAGE_VERSION}_$arch"
-        $docker build -f target/Dockerfile_x86_64 -t $tag
-        $docker push --creds=$GITHUB_USERNAME:$GITHUB_TOKEN $tag
+        tag="${basetag}_$arch"
+        $docker build -f "target/Dockerfile_${arch}" -t $tag
+        additional_tags="$additional_tags $tag"
     done
+    if [ "$docker" = "podman" ] && command -v buildah > /dev/null 2>&1; then
+      # shellcheck disable=SC2086
+      sha=$(buildah manifest create "${basetag}" $additional_tags)
+      buildah manifest push --all --creds=$GITHUB_USERNAME:$GITHUB_TOKEN "${basetag}" "docker://${basetag}"
+      buildah rmi $sha
+    fi
 fi

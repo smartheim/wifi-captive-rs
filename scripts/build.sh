@@ -31,9 +31,9 @@ prerequirements() {
         download https://musl.cc/x86_64-linux-musl-native.tgz $DEST/x86_64 2
     fi
 
-    if [ ! -d $DEST/armv7l ]; then
+    if [ ! -d $DEST/armv7 ]; then
         say "Download armv7l musl cross compiler toolchain"
-        download https://musl.cc/armv7l-linux-musleabihf-cross.tgz $DEST/armv7l 2
+        download https://musl.cc/armv7l-linux-musleabihf-cross.tgz $DEST/armv7 2
     fi
 
     if [ ! -d $DEST/aarch64 ]; then
@@ -141,7 +141,7 @@ compile_crate() {
     export PKG_CONFIG_LIBDIR="$DEST_ARCH/lib"
     say "Build crate for $ARCH"
     ensure cargo build --release --features includeui --target $TARGET
-    local METADATA=$(cargo metadata --format-version 1 | jq -r '.workspace_members[0]')
+    local METADATA=$(cargo metadata --format-version 1 | jq -r '.workspace_members[]' | tail -n1)
     CRATE_NAME=$(echo $METADATA | cut -d' ' -f1)
     CRATE_VERSION=$(echo $METADATA | cut -d' ' -f2)
     local BINFILE="target/$TARGET/release/$CRATE_NAME"
@@ -196,7 +196,7 @@ err() {
 prerequirements
 compile "x86_64" "" ""
 compile "aarch64" "aarch64-linux-musl-" "-DHAVE_BACKTRACE=0"
-compile "armv7l" "armv7l-linux-musleabihf-" "-DHAVE_BACKTRACE=0"
+compile "armv7" "armv7l-linux-musleabihf-" "-DHAVE_BACKTRACE=0"
 
 export PKG_CONFIG_ALLOW_CROSS=1
 export PKG_CONFIG_ALL_STATIC=1
@@ -206,6 +206,6 @@ rustup target add aarch64-unknown-linux-musl
 
 compile_crate "x86_64" "x86_64-unknown-linux-musl"
 compile_crate "aarch64" "aarch64-unknown-linux-musl"
-compile_crate "armv7l" "armv7-unknown-linux-musleabihf"
+compile_crate "armv7" "armv7-unknown-linux-musleabihf"
 
 exit 0
