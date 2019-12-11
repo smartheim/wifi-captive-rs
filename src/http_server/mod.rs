@@ -9,19 +9,20 @@
 use hyper::header::HeaderValue;
 use hyper::server::conn::AddrStream;
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use hyper::{Body, body::HttpBody, Method, Request, Response, Server, StatusCode};
 use std::net::{SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex, MutexGuard};
-
-use super::errors::CaptivePortalError;
-use futures_util::future::Either;
-use futures_util::try_future::try_select;
-use serde::Deserialize;
-
-use super::network_backend::NetworkBackend;
-use super::network_interface::{WifiConnectionEvent, WifiConnectionEventType, WifiConnections};
 use std::path::PathBuf;
 use std::time::Duration;
+use serde::Deserialize;
+
+use futures_util::future::Either;
+use futures_util::future::try_select;
+use tokio::time::delay_for;
+
+use super::errors::CaptivePortalError;
+use super::network_backend::NetworkBackend;
+use super::network_interface::{WifiConnectionEvent, WifiConnectionEventType, WifiConnections};
 
 mod file_serve;
 pub(crate) mod sse;
@@ -114,8 +115,8 @@ async fn http_router(
         let mut body = req.into_body();
         let mut output = Vec::new();
 
-        while let Some(chunk) = body.next().await {
-            let bytes = chunk?.into_bytes();
+        while let Some(data_result) = body.data().await {
+            let bytes = data_result?;
             output.extend(&bytes[..]);
         }
 
@@ -225,7 +226,7 @@ impl HttpServer {
             // Endless loop to send ping events ...
             loop {
                 // ... every 2 seconds
-                let sleep = tokio::timer::delay_for(Duration::from_secs(2));
+                let sleep = delay_for(Duration::from_secs(2));
                 pin_mut!(sleep);
                 // If the exit handler is called or dropped however, quit the loop
                 let r = futures_util::future::select(sleep, &mut keep_alive_exit_handler).await;

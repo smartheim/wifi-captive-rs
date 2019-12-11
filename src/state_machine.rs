@@ -5,13 +5,13 @@ use crate::http_server::WifiConnectionRequest;
 use crate::network_backend::NetworkBackend;
 use crate::network_interface::credentials_from_data;
 use crate::utils::ctrl_c_or_future;
-use crate::utils::FutureWithSignalCancel;
-use crate::{CaptivePortalError, verify_password};
+use crate::{CaptivePortalError, verify_password, ctrl_c_with_exit_handler};
 use crate::ConnectionState;
 use crate::NetworkManagerState;
 use log::info;
 use std::convert::TryInto;
 use std::time::Duration;
+use tokio::time::timeout;
 
 /// The programs state machine. Each state carries its required data, no side-effects.
 /// The configuration and network manager connection are moved between states.
@@ -137,10 +137,9 @@ impl StateMachine {
                 }
 
                 // Await a connectivity change, ctrl+c or the timeout
-                let r = nm
+                let r = ctrl_c_or_future(nm
                     .wait_for_connectivity_lost(config.internet_connectivity, Duration::from_secs(config.retry_in))
-                    .ctrl_c()
-                    .await;
+                ).await?;
 
                 match r {
                     // Ctrl+C
@@ -157,11 +156,8 @@ impl StateMachine {
                 info!("Acquire wifi access point list. This may take a minute ...");
                 let wifi_access_points = nm.list_access_points(Duration::from_secs(7)).await?;
 
-                use tokio::future::FutureExt;
-
-                let r = nm
-                    .hotspot_start(config.ssid.clone(), config.passphrase.clone(), Some(config.gateway))
-                    .timeout(Duration::from_secs(25))
+                let r = timeout(Duration::from_secs(25),nm
+                    .hotspot_start(config.ssid.clone(), config.passphrase.clone(), Some(config.gateway)))
                     .await;
 
                 let active_connection = match r {
@@ -189,14 +185,14 @@ impl StateMachine {
                     Duration::from_secs(config.retry_in),
                 )?;
 
-                let r = portal.ctrl_c_exit(exit_handler).await;
+                let r = ctrl_c_with_exit_handler(portal,exit_handler).await?;
                 info!("Portal closed");
                 match r {
                     // Ctrl+C
                     None => Ok(Some(StateMachine::Exit(nm))),
                     // Either the user has entered a wifi connection or a timeout happened
                     Some(wifi_connection) => {
-                        match wifi_connection? {
+                        match wifi_connection {
                             // The user has entered a wifi connection
                             Some(wifi_connection) => Ok(Some(StateMachine::Connect(config, nm, wifi_connection))),
                             // Timeout

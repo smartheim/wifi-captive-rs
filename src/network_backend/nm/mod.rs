@@ -17,6 +17,9 @@ use dbus::{nonblock, nonblock::SyncConnection};
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use futures_util::StreamExt;
+use std::time::Duration;
+use tokio::time::delay_for;
 
 // Re-export for easier use in sub-modules
 use crate::dbus_tokio;
@@ -29,8 +32,6 @@ use wifi_settings::{VariantMap, VariantMapNested};
 
 // Public API: AccessPointsChangedStream
 pub use access_points_changed::{ap_changed_stream, AccessPointChanged};
-use futures_util::StreamExt;
-use std::time::Duration;
 
 pub const NM_BUSNAME: &str = "org.freedesktop.NetworkManager";
 pub(crate) const NM_PATH: &str = "/org/freedesktop/NetworkManager";
@@ -346,7 +347,7 @@ impl NetworkBackend {
                 if timeout.as_millis() <= 0 {
                     break access_point_paths;
                 }
-                tokio::timer::delay_for(interval).await;
+                delay_for(interval).await;
                 timeout -= interval;
             }
         };

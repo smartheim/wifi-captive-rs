@@ -14,9 +14,9 @@ use dbus::message::{MatchRule, SignalArgs};
 use std::collections::VecDeque;
 use std::pin::Pin;
 use std::task::Waker;
-use tokio::stream::Stream;
 
 use serde::export::PhantomData;
+use futures_core::Stream;
 
 struct SignalStreamState<U> {
     signal_queue: VecDeque<dbus::Message>,

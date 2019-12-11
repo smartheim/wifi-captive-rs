@@ -2,6 +2,15 @@
 
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.3.0 - 2019-12-11
+
+Update to latest async ecosystem
+
+* Update to tokio 0.2
+* Update to futures 0.3
+* Update to hyper 0.13
+* Fix --ui-directory command line argument
+
 ## v0.2.0 - 2019-11-20
 
 Multiple Backends and stable Rust

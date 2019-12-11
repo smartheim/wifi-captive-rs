@@ -180,6 +180,12 @@ the command line option will take higher precedence.
     Usually it is sufficient if a connection to the local network can be established.
 
     Default: _false_
+    
+*   **-u, --ui_directory dir**, **$UI_DIRECTORY**
+
+    The directory where the html files reside.
+
+    Default: _not set_
 
 ## Acknowledgements
 
@@ -194,14 +200,13 @@ the command line option will take higher precedence.
 ## Development, Get Involved
 
 PRs are welcome. A PR is expected to be under the same license as the crate itself.
-This crate is using rusts async / await support (since Rust 1.39).
-Tokio 0.2 and futures 0.3 are used.
+This crate is using rusts async / await support (since Rust 1.39) via the Tokio executor.
 
 The UI is html, css based on pure-css and vanilla javascript ES9.
 
 There is not yet a full integration test.
 IMO a good one would fake network manager responses which requires a dbus service.
-The dbus crate is currently (as of Nov 2019) restructuring how dbus services are written.  
+The dbus crate is currently (as of Dec 2019) restructuring how dbus services are written.  
 
 Because system ports are tedious to work with during development,
 you can use the helper program *set_net_cap* in `scripts`.
@@ -227,7 +232,7 @@ has been established.
 * It only supports *NetworkManger*. 
 
 A related set of utilities is [wifish](https://github.com/bougyman/wifish), a script with a TUI that
-talks to directly to wpa_supplicant. The user selects a wifi and the connection is established.
+talks directly to wpa_supplicant. The user selects a wifi and the connection is established.
 And second [create_ap](https://github.com/oblique/create_ap), a script which uses *dnsmasq*, *hostapd*
 and *iw* under the hood to create an access point. 
 
@@ -247,5 +252,10 @@ and *iw* under the hood to create an access point.
   Many network chipsets do not support that. If a second / other wireless chipsets
   are installed, those will be used instead for scanning.
 
+* **How do I customize the UI?**
+  The distributed docker containers and binaries cannot be customized. The UI is embedded into the app.
+  - Disable the "embed UI" feature during compilation and use the "--ui_directory" command line argument later on.
+  - Alternatively build with `UI_DIRECTORY=dir cargo build --release` where `dir` must be the path to your ui files. 
+
 -----
- David Gräff, 2019
+ David Gräff, 2019-2020

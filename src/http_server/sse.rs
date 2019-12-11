@@ -4,7 +4,8 @@
 //! This library uses async hyper to support many concurrent push
 //! connections. It supports multiple parallel channels.
 
-use hyper::{Body, Chunk, Response};
+use hyper::{Body, Response};
+use bytes::Bytes;
 use std::net::IpAddr;
 
 use crate::network_interface::WifiConnectionEvent;
@@ -54,7 +55,7 @@ pub fn send_wifi_connection(
 fn push_to_all_clients(clients: &mut Clients, chunk: String) {
     // Clean up non reachable clients
     let drained = clients.drain_filter(|client| {
-        let result = client.tx.try_send_data(Chunk::from(chunk.clone()));
+        let result = client.tx.try_send_data(Bytes::from(chunk.clone()));
         match result {
             Err(_) => true,
             _ => false,

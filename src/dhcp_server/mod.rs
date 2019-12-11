@@ -394,12 +394,12 @@ mod tests {
     use super::{options::*, packet::decode, DHCPServer, DhcpOption, Packet};
     use futures_util::future::select;
     use futures_util::future::Either;
-    use futures_util::try_future::try_join;
+    use futures_util::future::try_join;
     use pin_utils::pin_mut;
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
     use std::time::Duration;
-    use tokio::runtime::Runtime;
-    use tokio_net::udp::UdpSocket;
+    use tokio::time::delay_for;
+    use tokio::net::UdpSocket;
 
     fn new_dhcp_discover(request_ip: [u8; 4]) -> Vec<u8> {
         let mut vec = Vec::with_capacity(1000);
@@ -537,16 +537,14 @@ mod tests {
             .expect("Failed to execute server or lookup");
     }
 
-    #[test]
-    fn test_domain() {
-        let rt = Runtime::new().expect("Runtime for dhcp test");
-
-        let timeout = tokio::timer::delay_for(Duration::from_secs(2));
+    #[tokio::test]
+    async fn test_domain() {
+        let timeout = delay_for(Duration::from_secs(2));
         pin_mut!(timeout);
         let test = test_domain_async();
         pin_mut!(test);
 
-        let r = rt.block_on(select(timeout, test));
+        let r = select(timeout, test).await;
         match r {
             Either::Left(_) => panic!("timeout"),
             _ => {},

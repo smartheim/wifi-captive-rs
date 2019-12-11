@@ -2,7 +2,7 @@
 //! network manager state as well as connection and device state.
 
 use futures_util::stream::StreamExt;
-use tokio::stream::StreamExt as TokioStream;
+use tokio::time::timeout;
 
 use super::NetworkBackend;
 use super::NM_BUSNAME;
@@ -30,7 +30,7 @@ impl From<u32> for NetworkManagerState {
             _ => {
                 warn!("Undefined Network Manager state: {}", state);
                 NetworkManagerState::Unknown
-            },
+            }
         }
     }
 }
@@ -84,7 +84,7 @@ impl NetworkBackend {
             state == NetworkManagerState::Connected
                 || (state == NetworkManagerState::ConnectedLimited && !internet_connectivity)
         })
-        .await
+            .await
     }
 
     /// The returned future resolves when either the timeout expired or (internet) connectivity is lost
@@ -97,17 +97,17 @@ impl NetworkBackend {
             state != NetworkManagerState::Connected
                 && (state != NetworkManagerState::ConnectedLimited || internet_connectivity)
         })
-        .await
+            .await
     }
 
     /// Waits up to "timeout" for the network backend to report the condition given in "condition".
     async fn connectivity_changed<F>(
         &self,
-        timeout: std::time::Duration,
+        timeout_value: std::time::Duration,
         condition: F,
     ) -> Result<NetworkManagerState, CaptivePortalError>
-    where
-        F: Fn(NetworkManagerState) -> bool,
+        where
+            F: Fn(NetworkManagerState) -> bool,
     {
         use super::networkmanager::NetworkManagerStateChanged as StateChanged;
 
@@ -117,16 +117,11 @@ impl NetworkBackend {
         }
 
         let mut stream = SignalStream::<StateChanged>::prop_new(&NM_PATH.to_owned().into(), self.conn.clone())
-            .await?
-            .timeout(timeout);
-        while let Some(state_change) = stream.next().await {
-            if let Ok((value, _path)) = state_change {
-                state = NetworkManagerState::from(value.state);
-                if condition(state) {
-                    return Ok(state);
-                }
-            } else {
-                break;
+            .await?;
+        while let Ok(Some((value, _path))) = timeout(timeout_value, stream.next()).await {
+            state = NetworkManagerState::from(value.state);
+            if condition(state) {
+                return Ok(state);
             }
         }
 
@@ -144,7 +139,7 @@ impl NetworkBackend {
         &self,
         expected_state: ConnectionState,
         path: dbus::Path<'_>,
-        timeout: std::time::Duration,
+        timeout_value: std::time::Duration,
         negate: bool,
     ) -> Result<ConnectionState, CaptivePortalError> {
         let p = nonblock::Proxy::new(NM_BUSNAME, path, self.conn.clone());
@@ -160,16 +155,12 @@ impl NetworkBackend {
         let rule = StateChanged::match_rule(None, None).static_clone();
         let stream: SignalStream<StateChanged> = SignalStream::new(self.conn.clone(), rule).await?;
         pin_utils::pin_mut!(stream);
-        let mut stream = stream.timeout(timeout); // Idea IDE Workaround
+        let mut stream = stream; // Idea IDE Workaround
 
-        while let Some(state_change) = stream.next().await {
-            if let Ok((state, _path)) = state_change {
-                let state = ConnectionState::from(state.state);
-                if (state == expected_state) ^ negate {
-                    return Ok(state);
-                }
-            } else {
-                break;
+        while let Ok(Some((state, _path))) = timeout(timeout_value, stream.next()).await {
+            let state = ConnectionState::from(state.state);
+            if (state == expected_state) ^ negate {
+                return Ok(state);
             }
         }
 

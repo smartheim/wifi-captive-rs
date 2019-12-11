@@ -124,11 +124,11 @@ mod tests {
     use crate::dns_server::dns_query::DnsQuery;
     use futures_util::future::select;
     use futures_util::future::Either;
-    use futures_util::try_future::try_join;
+    use futures_util::future::try_join;
     use pin_utils::pin_mut;
     use std::net::Ipv4Addr;
     use std::time::Duration;
-    use tokio::runtime::Runtime;
+    use tokio::time::delay_for;
 
     async fn lookup(qname: &str, qtype: QueryType, server: SocketAddr) -> Result<DnsPacket, super::CaptivePortalError> {
         let mut socket = UdpSocket::bind(("0.0.0.0", 0)).await?;
@@ -178,16 +178,14 @@ mod tests {
             .expect("Failed to execute server or lookup");
     }
 
-    #[test]
-    fn test_domain() {
-        let rt = Runtime::new().expect("Test runtime");
-
-        let timeout = tokio::timer::delay_for(Duration::from_secs(2));
+    #[tokio::test]
+    async fn test_domain() {
+        let timeout = delay_for(Duration::from_secs(2));
         pin_mut!(timeout);
         let test = test_domain_async();
         pin_mut!(test);
 
-        let r = rt.block_on(select(timeout, test));
+        let r = select(timeout, test).await;
         match r {
             Either::Left(_) => panic!("timeout"),
             _ => {},
