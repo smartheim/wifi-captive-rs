@@ -86,7 +86,7 @@ pub struct Config {
     pub internet_connectivity: bool,
 
     /// The directory where the html files reside.
-    #[structopt(parse(from_os_str), short, env = "UI_DIRECTORY")]
+    #[structopt(parse(from_os_str), short, long, env = "UI_DIRECTORY")]
     #[cfg(all(not(feature = "includeui"), debug_assertions))]
     pub ui_directory: Option<PathBuf>,
 }

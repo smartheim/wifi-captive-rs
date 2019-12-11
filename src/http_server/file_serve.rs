@@ -8,7 +8,7 @@ use hyper::{Body, Request, Response, StatusCode};
 use std::path::{Path, PathBuf};
 
 #[cfg(any(feature = "includeui", not(debug_assertions)))]
-use include_dir::{include_dir, include_dir_impl};
+use include_dir::{include_dir};
 
 #[cfg(any(feature = "includeui", not(debug_assertions)))]
 /// A reference to all binary embedded ui files
