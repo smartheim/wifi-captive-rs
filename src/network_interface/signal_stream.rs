@@ -1,7 +1,4 @@
 //! # A convenience stream type that allows to listen to dbus signals as a future stream
-//!
-//! It also provides the SignalStream type, a convenience stream type that allows to listen
-//! to dbus signals as a future stream.
 
 use dbus::channel::{MatchingReceiver, Token};
 use dbus::nonblock::SyncConnection;
